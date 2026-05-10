@@ -53,10 +53,15 @@ public static class SecretBinder
     public static void Bind(
         TampBuild build,
         Func<string, string?> getEnv,
-        Action<Secret>? onResolved = null)
+        Action<Secret>? onResolved = null,
+        IOsSecretStore? osStore = null)
     {
         if (build is null) throw new ArgumentNullException(nameof(build));
         if (getEnv is null) throw new ArgumentNullException(nameof(getEnv));
+
+        // Lazy default: detect the platform's keychain on first use.
+        // Tests inject a fake to keep the bind path deterministic.
+        osStore ??= OsSecretStore.Detect();
 
         const BindingFlags flags = BindingFlags.Instance | BindingFlags.Public | BindingFlags.NonPublic;
         var type = build.GetType();
@@ -68,8 +73,16 @@ public static class SecretBinder
 
             var envKey = member.Attribute.EnvironmentVariable
                 ?? ParameterBinder.ToUpperSnakeCase(member.Name);
-            var value = getEnv(envKey);
-            if (string.IsNullOrEmpty(value)) continue;  // missing — leave null; EnsureRequired will retry
+
+            // Resolution chain (in order):
+            //   1. Environment variable (covers CI vendor stores; everyone has env)
+            //   2. OS keychain (local dev fallback when env not set)
+            //   (3. interactive prompt happens later in EnsureResolved)
+            string? value = getEnv(envKey);
+            if (string.IsNullOrEmpty(value) && osStore is not null && member.Attribute.UseKeychain)
+                value = osStore.TryGet(envKey);
+
+            if (string.IsNullOrEmpty(value)) continue;  // still missing — EnsureResolved or Requires() takes it from here
 
             // Resolution order for the Secret's display Name (the redaction label):
             //   1. attr.Name (explicit override; rare)

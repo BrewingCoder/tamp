@@ -56,4 +56,17 @@ public sealed class SecretAttribute : Attribute
     /// store — keeps a CI run from hanging waiting for input.
     /// </summary>
     public bool AllowInteractivePrompt { get; init; } = true;
+
+    /// <summary>
+    /// When <c>true</c> (default), <see cref="SecretBinder.Bind"/>
+    /// consults the host's OS keychain (macOS Keychain / libsecret /
+    /// Windows Credential Manager) as a fallback when the environment
+    /// variable isn't set. Lookup key is the secret's
+    /// <see cref="EnvironmentVariable"/> (or <c>UPPER_SNAKE_CASE</c>
+    /// of the member name) under the service / target name
+    /// <c>tamp</c>. Set to <c>false</c> on secrets that should ONLY
+    /// resolve from env (e.g. when the keychain would be stale or
+    /// out-of-band).
+    /// </summary>
+    public bool UseKeychain { get; init; } = true;
 }

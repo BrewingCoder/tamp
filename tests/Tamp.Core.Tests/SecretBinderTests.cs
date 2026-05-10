@@ -266,5 +266,112 @@ public sealed class SecretBinderTests
     [Fact]
     public void EnsureResolved_Throws_On_Null_Build()
         => Assert.Throws<ArgumentNullException>(() => SecretBinder.EnsureResolved(null!));
+
+    // ================================================================
+    // Bind — OS keychain leg (TAM-83)
+    // ================================================================
+
+    /// <summary>Test double for IOsSecretStore.</summary>
+    private sealed class FakeKeychain : IOsSecretStore
+    {
+        public Dictionary<string, string> Entries { get; } = new();
+        public int Calls { get; private set; }
+        public string? TryGet(string name)
+        {
+            Calls++;
+            return Entries.TryGetValue(name, out var v) ? v : null;
+        }
+    }
+
+    private sealed class KeychainBuild : TampBuild
+    {
+        [Secret("Keychain token")]
+        public Secret? KeychainToken;
+    }
+
+    private sealed class NoKeychainBuild : TampBuild
+    {
+        [Secret("No keychain", UseKeychain = false)]
+        public Secret? Token;
+    }
+
+    [Fact]
+    public void Bind_Falls_Back_To_Keychain_When_Env_Missing()
+    {
+        var build = new KeychainBuild();
+        var env = new NoOpEnv();   // env empty
+        var keychain = new FakeKeychain { Entries = { ["KEYCHAIN_TOKEN"] = "from-keychain" } };
+        SecretBinder.Bind(build, env.Get, osStore: keychain);
+        Assert.NotNull(build.KeychainToken);
+        Assert.Equal("from-keychain", build.KeychainToken!.Reveal());
+        Assert.Equal(1, keychain.Calls);
+    }
+
+    [Fact]
+    public void Bind_Env_Wins_Over_Keychain_When_Both_Set()
+    {
+        var build = new KeychainBuild();
+        var env = new NoOpEnv { ["KEYCHAIN_TOKEN"] = "from-env" };
+        var keychain = new FakeKeychain { Entries = { ["KEYCHAIN_TOKEN"] = "from-keychain" } };
+        SecretBinder.Bind(build, env.Get, osStore: keychain);
+        Assert.NotNull(build.KeychainToken);
+        Assert.Equal("from-env", build.KeychainToken!.Reveal());
+        // Keychain shouldn't even have been consulted since env was set.
+        Assert.Equal(0, keychain.Calls);
+    }
+
+    [Fact]
+    public void Bind_Skips_Keychain_When_UseKeychain_False()
+    {
+        var build = new NoKeychainBuild();
+        var env = new NoOpEnv();   // env empty
+        var keychain = new FakeKeychain { Entries = { ["TOKEN"] = "from-keychain" } };
+        SecretBinder.Bind(build, env.Get, osStore: keychain);
+        Assert.Null(build.Token);
+        Assert.Equal(0, keychain.Calls);  // never consulted
+    }
+
+    [Fact]
+    public void Bind_With_Null_Keychain_Just_Uses_Env()
+    {
+        // Explicit null osStore (no platform store detected, or test
+        // wanted to bypass).
+        var build = new DefaultEnvBuild();
+        var env = new NoOpEnv { ["API_TOKEN"] = "v" };
+        SecretBinder.Bind(build, env.Get, osStore: null);
+        Assert.NotNull(build.ApiToken);
+        Assert.Equal("v", build.ApiToken!.Reveal());
+    }
+
+    [Fact]
+    public void Bind_Fires_OnResolved_For_Keychain_Source_Too()
+    {
+        var build = new KeychainBuild();
+        var env = new NoOpEnv();
+        var keychain = new FakeKeychain { Entries = { ["KEYCHAIN_TOKEN"] = "v" } };
+        var calls = 0;
+        SecretBinder.Bind(build, env.Get, onResolved: _ => calls++, osStore: keychain);
+        Assert.Equal(1, calls);
+    }
+
+    [Fact]
+    public void Bind_Keychain_Empty_String_Treated_As_Missing()
+    {
+        var build = new KeychainBuild();
+        var env = new NoOpEnv();
+        var keychain = new FakeKeychain { Entries = { ["KEYCHAIN_TOKEN"] = "" } };
+        SecretBinder.Bind(build, env.Get, osStore: keychain);
+        Assert.Null(build.KeychainToken);
+    }
+
+    [Fact]
+    public void SecretAttribute_UseKeychain_Defaults_To_True()
+    {
+        var attr = typeof(KeychainBuild)
+            .GetField(nameof(KeychainBuild.KeychainToken))!
+            .GetCustomAttributes(typeof(SecretAttribute), inherit: true);
+        var secretAttr = (SecretAttribute)attr[0];
+        Assert.True(secretAttr.UseKeychain);
+    }
 }
 #pragma warning restore CS0649

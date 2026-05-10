@@ -8,10 +8,27 @@ Pre-1.0 versions may break public API freely between minor versions; the `0.x` l
 
 ## [Unreleased]
 
-### Known issues
+## [1.0.2] — 2026-05-10
 
-- **OS keychain leg** of `[Secret]` resolution chain (macOS Keychain / libsecret / Windows Credential Manager) — explicitly deferred from TAM-79 to a future ticket. Cross-platform native-store integration is complex enough to deserve its own design cycle.
-- **Windows CI** — two `Tamp.DotNetCoverage.V18` tests fail on `windows-latest` with path-separator assertions. Linux + macOS CI green; tests pass locally on macOS arm64. Tracked separately.
+### Added
+
+- **OS keychain leg** for `[Secret]` resolution (TAM-83). `SecretBinder.Bind` consults the host's native secret store after the env-var leg, before interactive prompt. Backends:
+  - **macOS**: `security find-generic-password` CLI.
+  - **Linux**: `secret-tool lookup` (libsecret).
+  - **Windows**: P/Invoke to `Advapi32.CredReadW`.
+  - Service / target name fixed at `tamp`; account is the resolved env-var name.
+  - Live keychain validated end-to-end via the macOS `security` CLI.
+  - 7 new tests (447 → 454 in `Tamp.Core.Tests`).
+  - Opt out per-secret with `[Secret(UseKeychain = false)]` (default `true`). Env still wins over keychain when both are present.
+- **CI status gate** in `release.yml` plus a templated `ci.yml` rolled out to the 6 satellite repos. Tag-driven release polls `gh run list --workflow CI --commit $SHA` for up to 10 minutes; refuses to pack + publish if CI conclusion isn't `success`. Skipped on `workflow_dispatch` (manual land-grab path).
+- **Branch protection** on `main` requires all three `build & test (<os>)` status checks before merge. Applied across all 7 tamp-build repos.
+
+### Fixed
+
+- **TAM-84** — two `Tamp.DotNetCoverage.V18` tests previously failing on `windows-latest` (`Collect_Executable_Is_The_Tool_Path`, `Merge_AddInputs_Accepts_AbsolutePath_Sequence`). Both had hardcoded forward-slash path assertions that didn't survive `AbsolutePath`'s `Path.GetFullPath` normalization on Windows. Now compare through the same `AbsolutePath.Value` they emit.
+
+[Unreleased]: https://github.com/tamp-build/tamp/compare/v1.0.2...HEAD
+[1.0.2]: https://github.com/tamp-build/tamp/releases/tag/v1.0.2
 
 ## [1.0.1] — 2026-05-10
 
@@ -26,7 +43,6 @@ Pre-1.0 versions may break public API freely between minor versions; the `0.x` l
 
 - `SecretAttribute` gains an `AllowInteractivePrompt` property (default `true`).
 
-[Unreleased]: https://github.com/tamp-build/tamp/compare/v1.0.1...HEAD
 [1.0.1]: https://github.com/tamp-build/tamp/releases/tag/v1.0.1
 
 ## [1.0.0] — 2026-05-10
