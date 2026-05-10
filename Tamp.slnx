@@ -23,6 +23,8 @@
     <Project Path="src/Tamp.NetCli.V8/Tamp.NetCli.V8.csproj" />
     <Project Path="src/Tamp.NetCli.V9/Tamp.NetCli.V9.csproj" />
     <Project Path="src/Tamp.NetCli.V10/Tamp.NetCli.V10.csproj" />
+    <Project Path="src/Tamp.SonarScanner.V10/Tamp.SonarScanner.V10.csproj" />
+    <Project Path="src/Tamp.SonarScannerCli.V6/Tamp.SonarScannerCli.V6.csproj" />
   </Folder>
   <Folder Name="/build/">
     <Project Path="build/Build.csproj" />
@@ -34,5 +36,7 @@
     <Project Path="tests/Tamp.NetCli.V8.Tests/Tamp.NetCli.V8.Tests.csproj" />
     <Project Path="tests/Tamp.NetCli.V9.Tests/Tamp.NetCli.V9.Tests.csproj" />
     <Project Path="tests/Tamp.NetCli.V10.Tests/Tamp.NetCli.V10.Tests.csproj" />
+    <Project Path="tests/Tamp.SonarScanner.V10.Tests/Tamp.SonarScanner.V10.Tests.csproj" />
+    <Project Path="tests/Tamp.SonarScannerCli.V6.Tests/Tamp.SonarScannerCli.V6.Tests.csproj" />
   </Folder>
 </Solution>

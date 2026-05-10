@@ -1,0 +1,21 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <TargetFrameworks>net8.0;net9.0;net10.0</TargetFrameworks>
+    <RootNamespace>Tamp.SonarScannerCli.V6</RootNamespace>
+    <AssemblyName>Tamp.SonarScannerCli.V6</AssemblyName>
+  </PropertyGroup>
+
+  <PropertyGroup Label="Package">
+    <PackageId>Tamp.SonarScannerCli.V6</PackageId>
+    <Version>0.0.1-alpha</Version>
+    <Description>Tamp wrapper for the SonarScanner CLI (the Java sonar-scanner binary, current major v6). Single-phase invocation; reads sonar-project.properties from the working directory by default, with command-line `-D` flags as overrides. For .NET / MSBuild projects, see Tamp.SonarScanner.V10 instead — different tool, different invocation shape.</Description>
+    <IsPackable>true</IsPackable>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\Tamp.Core\Tamp.Core.csproj" />
+    <PackageReference Include="Microsoft.SourceLink.GitHub" PrivateAssets="All" />
+  </ItemGroup>
+
+</Project>

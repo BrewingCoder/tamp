@@ -6,3 +6,5 @@ using System.Runtime.CompilerServices;
 [assembly: InternalsVisibleTo("Tamp.NetCli.V9")]
 [assembly: InternalsVisibleTo("Tamp.NetCli.V10")]
 [assembly: InternalsVisibleTo("Tamp.Docker.V27")]
+[assembly: InternalsVisibleTo("Tamp.SonarScanner.V10")]
+[assembly: InternalsVisibleTo("Tamp.SonarScannerCli.V6")]
