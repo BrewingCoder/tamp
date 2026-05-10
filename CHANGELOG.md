@@ -8,9 +8,44 @@ Pre-1.0 versions may break public API freely between minor versions; the `0.x` l
 
 ## [Unreleased]
 
-### Added
+### Known issues
 
-— first stable release notes will accumulate here as the codebase reaches the v0 walking-skeleton dogfood milestone (TAM-34) and Microsoft confirms the `Tamp.*` prefix reservation (TAM-40).
+- **TAM-78** — `[Secret]` env-var resolver missing. The attribute and `Secret` type are wired through `CommandPlan.Secrets` and the redaction table, but `ParameterBinder` doesn't bind `[Secret]` fields. Build scripts must read env vars manually until 1.0.1. See satellite READMEs for the workaround pattern.
+- **TAM-79** — full `[Secret]` resolution chain (CI vendor store / keychain / env / interactive prompt) deferred to a v1.x feature release.
+- **Windows CI** — two `Tamp.DotNetCoverage.V18` tests fail on `windows-latest` with path-separator assertions. Linux + macOS CI green; tests pass locally on macOS arm64. Tracked separately.
+
+## [1.0.0] — 2026-05-10
+
+First v1 release. Core API is now stable; satellite repos can pin against it via PackageReference.
+
+### Published from this repo
+
+- `Tamp.Core` — small core: target executor, parameter binding, `Secret` type with redaction table, host detection, `CommandPlan`, `ProcessRunner`, multi-edge target graph (`DependsOn` / `Before` / `After` / `Triggers` / `TriggeredBy` / `OnFailureOf` / `OnlyWhen` / `Requires` / `AssuredAfterFailure`), `AbsolutePath`, `Solution` + `GitRepository` models, `Tool` + `[NuGetPackage]`, `CiHost` adapters (GitHub Actions, Azure DevOps, TeamCity), `Logger` + verbosity controls.
+- `Tamp.Cli` — global tool, bare-command flavor (`tamp <target>`).
+- `dotnet-tamp` — global tool, dotnet-verb flavor (`dotnet tamp <target>`). Dispatches via `BuildProjectLocator` walking up from CWD looking for `build/Build.csproj`.
+- `Tamp.NetCli.V8` / `V9` / `V10` — wrappers for the .NET 8 / 9 / 10 SDK CLIs. Verbs: `Restore`, `Build`, `Test`, `Pack`, `Publish`, `NuGetPush`, `Format` / `FormatWhitespace` / `FormatStyle` / `FormatAnalyzers`. `dotnet test` accepts `AddDataCollector("Code Coverage")` for cross-platform coverage; the underlying `dotnet-coverage collect` profiler-attach path is broken on macOS arm64 (Hardened Runtime strips `CORECLR_PROFILER`), the data-collector path works everywhere.
+- `Tamp.DotNetCoverage.V18` — wrapper for Microsoft's `dotnet-coverage` tool (Collect + Merge verbs; Cobertura output for downstream tools).
+
+### Moved to satellite repos
+
+Per the satellite-repo convention (third-party tools with their own release cadence don't belong in `tamp` main), these packages now ship from their own repos under the `tamp-build` org:
+
+| Package | Now at |
+|---|---|
+| `Tamp.Docker.V27` | [`tamp-build/tamp-docker`](https://github.com/tamp-build/tamp-docker) |
+| `Tamp.SonarScanner.V10` + `Tamp.SonarScannerCli.V6` | [`tamp-build/tamp-sonar`](https://github.com/tamp-build/tamp-sonar) |
+| `Tamp.EFCore.V8` / `V9` / `V10` | [`tamp-build/tamp-ef`](https://github.com/tamp-build/tamp-ef) |
+| `Tamp.GitVersion.V6` | [`tamp-build/tamp-gitversion`](https://github.com/tamp-build/tamp-gitversion) |
+| `Tamp.ReportGenerator.V5` | [`tamp-build/tamp-reportgenerator`](https://github.com/tamp-build/tamp-reportgenerator) |
+| `Tamp.GitHubCli.V2` | [`tamp-build/tamp-gh`](https://github.com/tamp-build/tamp-gh) |
+
+Package IDs are unchanged; future releases come from the satellite repos via the same OIDC trusted publishing or org-secret-driven release flow. `Tamp.Core`'s `[InternalsVisibleTo]` list still grants the satellite packages access to `Secret.Reveal()`.
+
+### Validated end-to-end through the dogfood pipeline
+
+`Tamp.GitVersion.V6 0.1.0` and `Tamp.GitHubCli.V2 0.1.0` were both released by **Tamp itself** — `dotnet tamp Ci` + `dotnet tamp Push` running in their satellite repos' GitHub Actions, against the `tamp_nuget_api_key` org secret. First proof that the framework can ship the framework's own ecosystem.
+
+The dogfood loop also surfaced TAM-78 (the `[Secret]` resolver gap above) as a real find — exactly the kind of bug that only shows up under real-tool execution.
 
 ## [0.0.1-alpha] — 2026-05-10
 
@@ -35,5 +70,6 @@ The architectural decisions captured before and during this run are recorded as 
 - ADR 0009 — Governance and namespace policy
 - ADR 0015 — Target framework strategy (multi-target net8/net9/net10, follow Microsoft support calendar)
 
-[Unreleased]: https://github.com/tamp-build/tamp/compare/v0.0.1-alpha...HEAD
+[Unreleased]: https://github.com/tamp-build/tamp/compare/v1.0.0...HEAD
+[1.0.0]: https://github.com/tamp-build/tamp/releases/tag/v1.0.0
 [0.0.1-alpha]: https://github.com/tamp-build/tamp/releases/tag/v0.0.1-alpha

@@ -6,6 +6,30 @@ A small-core, plugin-driven build automation framework for .NET 10 and beyond. C
 
 ---
 
+## Status
+
+**Tamp.Core 1.0.0 shipped 2026-05-10.** API is stable; satellite repos pin against it via `PackageReference`.
+
+| Package family | Repo | Latest |
+|---|---|---|
+| `Tamp.Core` / `Tamp.Cli` / `dotnet-tamp` | this repo (`tamp`) | **1.0.0** |
+| `Tamp.NetCli.V8` / `V9` / `V10` | this repo | **1.0.0** |
+| `Tamp.DotNetCoverage.V18` | this repo | **1.0.0** |
+| `Tamp.Docker.V27` | [`tamp-docker`](https://github.com/tamp-build/tamp-docker) | preview |
+| `Tamp.SonarScanner.V10` / `SonarScannerCli.V6` | [`tamp-sonar`](https://github.com/tamp-build/tamp-sonar) | preview |
+| `Tamp.EFCore.V8` / `V9` / `V10` | [`tamp-ef`](https://github.com/tamp-build/tamp-ef) | preview |
+| `Tamp.GitVersion.V6` | [`tamp-gitversion`](https://github.com/tamp-build/tamp-gitversion) | **0.1.0** |
+| `Tamp.ReportGenerator.V5` | [`tamp-reportgenerator`](https://github.com/tamp-build/tamp-reportgenerator) | preview |
+| `Tamp.GitHubCli.V2` | [`tamp-gh`](https://github.com/tamp-build/tamp-gh) | **0.1.0** |
+
+Third-party tool wrappers ship from satellite repos so each tool's release cadence (Docker every 2 weeks, EF every couple months, gh every couple weeks) doesn't gate Tamp core releases. Same `PackageReference` story for the consumer; different release schedules for the maintainer.
+
+The `Tamp.GitVersion.V6 0.1.0` and `Tamp.GitHubCli.V2 0.1.0` releases shipped through **Tamp itself** — `dotnet tamp Ci && dotnet tamp Push` running in the satellite repos' CI, dogfooding the framework end-to-end. See those repos' `build/Build.cs` and `.github/workflows/release.yml` for the pattern.
+
+**Known v1.0.0 gap:** the `[Secret]` env-var resolver isn't wired in `ParameterBinder` ([TAM-78](https://github.com/tamp-build/tamp/issues), 1.0.1 patch). Until then, build scripts read sensitive env vars manually and construct `Secret(...)` directly — the workaround is one helper line, see satellite README quick-examples.
+
+---
+
 ## Why Tamp Exists
 
 NUKE was the right idea executed in a way that didn't survive its maintainer. Every tool wrapper lived in the framework's main assembly, every release was bottlenecked on one person's evenings, and every breaking change in `dotnet`, `docker`, or `sonar-scanner` waited for an upstream cut. When NUKE's lifecycle stalled, the .NET community had no fallback that wasn't also a lifecycle bet.
@@ -481,23 +505,33 @@ Schemas (the source-of-truth for what flags exist, their types, defaults, mutex 
 
 ## Roadmap
 
-### v0 — Walking skeleton
+### v0 — Walking skeleton ✅ (shipped)
 
-- `Tamp.Core` with target executor, parameter injection, dry-run, secret type, host detection (mid tier)
-- `Tamp.Cli` global tool with `tamp <target>`, `--dry-run`, `--plan`, `--list`
-- `Tamp.NetCli.V8`, `Tamp.NetCli.V9`, `Tamp.NetCli.V10` covering the dotnet CLI subset needed for one real pipeline, with the V10 module as the canonical reference and V8/V9 maintained for locked-down and STS-adopter consumers
-- One real pipeline (HoldFast's .NET SDK package) ported as the dogfooding target
+- `Tamp.Core` with target executor, parameter injection, dry-run via `CommandPlan`, `Secret` type, host detection
+- `Tamp.Cli` + `dotnet-tamp` global tools
+- `Tamp.NetCli.V8` / `V9` / `V10` covering the dotnet CLI subset needed for real pipelines
+- Tamp self-hosts; the `tamp` repo's own `build/Build.cs` drives its `Ci` / `Coverage` targets via Tamp
 
-### v1 — Real-world coverage
+### v1 — Real-world coverage ✅ (shipping)
 
-- `Tamp.Docker.V27`, `Tamp.SonarQube.V10`, `Tamp.Yarn`, `Tamp.Turbo.V2` to cover the rest of HoldFast's needs
-- Schema-driven wrapper generation with AI-assisted bootstrapping from `--help`
-- IDE integration via `tasks.json` / `launch.json` generation (`tamp :ide-config`)
-- MCP server mode (`tamp :mcp-server`) exposing targets as callable tools
+- `Tamp.Core 1.0.0` shipped 2026-05-10 with the API contract that satellites pin against
+- Tier-1 tooling shipped: `Tamp.NetCli.V*` (`Format` verbs added), `Tamp.DotNetCoverage.V18`, `Tamp.Docker.V27`, `Tamp.SonarScanner.V10` / `SonarScannerCli.V6`, `Tamp.EFCore.V8` / `V9` / `V10`, `Tamp.GitVersion.V6`, `Tamp.ReportGenerator.V5`, `Tamp.GitHubCli.V2`
+- Satellite-repo split per the convention: third-party tool wrappers live outside `tamp` core
+- Dogfood release pipeline validated: `tamp-gitversion 0.1.0` and `tamp-gh 0.1.0` shipped through `dotnet tamp Ci` running in their own GitHub Actions
+
+### v1.x — Patch + ecosystem fill
+
+- **TAM-78** — wire `[Secret]` env-var resolution into `ParameterBinder` (1.0.1)
+- **TAM-79** — full `[Secret]` resolution chain: CI vendor store, OS keychain, env, interactive prompt
+- ADR backfill (TAM-78 → ADR series 0003/0004/0005/0008/0010-0014 already drafted, need to land)
+- HoldFast pipeline port — first external (non-Tamp) project on Tamp
+- Wiki sweep across all satellite repos
 
 ### v2 — Adoption
 
-- Public NuGet release of core + first-party modules
+- Schema-driven wrapper generation with AI-assisted bootstrapping from `--help` output (the EF integration tests showed this catches real bugs the unit tests miss; codifying that workflow)
+- IDE integration via `tasks.json` / `launch.json` generation (`tamp :ide-config`)
+- MCP server mode (`tamp :mcp-server`) exposing targets as callable tools
 - Documentation site
 - Migration guide from NUKE and Cake
 - Community module template and contribution guide
