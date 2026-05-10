@@ -17,6 +17,7 @@ ADRs are append-only. Don't edit an Accepted ADR's substance after the fact — 
 
 | #    | Title                                                                                  | Status   |
 |------|----------------------------------------------------------------------------------------|----------|
+| 0001 | [Small core, plugin-driven architecture](0001-small-core-plugin-architecture.md)       | Accepted |
 | 0002 | [Package naming convention](0002-package-naming-convention.md)                         | Accepted |
 | 0006 | [Repository layout: monorepo for core and first-party modules](0006-repo-layout-monorepo.md) | Accepted |
 | 0007 | [License — MIT](0007-license-mit.md)                                                   | Accepted |
