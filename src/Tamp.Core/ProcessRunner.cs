@@ -18,6 +18,65 @@ namespace Tamp;
 /// </remarks>
 public static class ProcessRunner
 {
+    /// <summary>
+    /// Spawn <paramref name="plan"/> and capture every stdout / stderr line
+    /// in order, with the source stream tagged. Returns the exit code plus
+    /// the captured lines for the caller to inspect.
+    /// </summary>
+    /// <remarks>
+    /// Use this when a wrapper needs to read what the tool printed —
+    /// e.g., parse <c>dotnet --version</c> output, read a progress JSON
+    /// stream, or detect a specific error pattern. For build-pipeline
+    /// dispatch where the output should just stream through, use
+    /// <see cref="Execute"/>.
+    /// </remarks>
+    public static CaptureResult Capture(CommandPlan plan, TextWriter? alsoStdout = null, TextWriter? alsoStderr = null)
+    {
+        if (plan is null) throw new ArgumentNullException(nameof(plan));
+
+        var lines = new List<OutputLine>();
+        var lockObj = new object();
+
+        var psi = new ProcessStartInfo
+        {
+            FileName = plan.Executable,
+            UseShellExecute = false,
+            RedirectStandardOutput = true,
+            RedirectStandardError = true,
+            RedirectStandardInput = plan.StandardInput is not null,
+        };
+        if (plan.WorkingDirectory is not null)
+            psi.WorkingDirectory = plan.WorkingDirectory;
+        foreach (var arg in plan.Arguments)
+            psi.ArgumentList.Add(arg);
+        foreach (var (k, v) in plan.Environment)
+            psi.Environment[k] = v;
+
+        using var process = new Process { StartInfo = psi };
+        process.OutputDataReceived += (_, e) =>
+        {
+            if (e.Data is null) return;
+            lock (lockObj) lines.Add(new OutputLine(OutputType.Stdout, e.Data));
+            alsoStdout?.WriteLine(e.Data);
+        };
+        process.ErrorDataReceived += (_, e) =>
+        {
+            if (e.Data is null) return;
+            lock (lockObj) lines.Add(new OutputLine(OutputType.Stderr, e.Data));
+            alsoStderr?.WriteLine(e.Data);
+        };
+        process.Start();
+        process.BeginOutputReadLine();
+        process.BeginErrorReadLine();
+        if (plan.StandardInput is not null)
+        {
+            process.StandardInput.Write(plan.StandardInput);
+            process.StandardInput.Close();
+        }
+        process.WaitForExit();
+        return new CaptureResult(process.ExitCode, lines);
+    }
+
     /// <summary>Spawn the process described by <paramref name="plan"/> and wait for exit.</summary>
     public static int Execute(CommandPlan plan, TextWriter? stdout = null, TextWriter? stderr = null)
     {
