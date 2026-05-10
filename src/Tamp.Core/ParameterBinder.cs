@@ -37,6 +37,12 @@ public static class ParameterBinder
         const BindingFlags flags = BindingFlags.Instance | BindingFlags.Public | BindingFlags.NonPublic;
         var type = build.GetType();
 
+        // Phase 1: ValueInjection attributes (Solution, GitRepository, future
+        // codegen-style auto-loaders). These run before [Parameter] binding
+        // so [Parameter] resolution can read injected values if it ever
+        // needs to (none today, but the ordering is intentional).
+        BindInjectedValues(build, type, flags);
+
         foreach (var member in EnumerateAnnotatedMembers(type, flags))
         {
             if (member.Attribute is null) continue;
@@ -69,6 +75,45 @@ public static class ParameterBinder
             }
 
             member.SetValue(build, converted);
+        }
+    }
+
+    private static void BindInjectedValues(TampBuild build, Type type, BindingFlags flags)
+    {
+        foreach (var p in type.GetProperties(flags))
+        {
+            var attr = p.GetCustomAttribute<ValueInjectionAttribute>(inherit: true);
+            if (attr is null) continue;
+            if (!p.CanWrite) continue;
+            if (p.GetIndexParameters().Length > 0) continue;
+            try
+            {
+                var value = attr.GetValue(p, p.PropertyType);
+                p.SetValue(build, value);
+            }
+            catch (Exception ex)
+            {
+                throw new InvalidOperationException(
+                    $"Failed to inject value into '{p.Name}' via [{attr.GetType().Name}]: {ex.Message}",
+                    ex);
+            }
+        }
+        foreach (var f in type.GetFields(flags))
+        {
+            var attr = f.GetCustomAttribute<ValueInjectionAttribute>(inherit: true);
+            if (attr is null) continue;
+            if (f.IsInitOnly) continue;
+            try
+            {
+                var value = attr.GetValue(f, f.FieldType);
+                f.SetValue(build, value);
+            }
+            catch (Exception ex)
+            {
+                throw new InvalidOperationException(
+                    $"Failed to inject value into '{f.Name}' via [{attr.GetType().Name}]: {ex.Message}",
+                    ex);
+            }
         }
     }
 
