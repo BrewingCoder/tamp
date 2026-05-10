@@ -29,19 +29,28 @@ public sealed class Executor
 {
     private readonly RedactionTable _redactionTable;
     private readonly RedactingTextWriter _redactedOutput;
+    private readonly Logger _log;
 
-    public Executor(TargetGraph graph, ExecutionMode mode = ExecutionMode.Run, TextWriter? output = null)
+    public Executor(
+        TargetGraph graph,
+        ExecutionMode mode = ExecutionMode.Run,
+        TextWriter? output = null,
+        LogLevel verbosity = LogLevel.Info)
     {
         Graph = graph ?? throw new ArgumentNullException(nameof(graph));
         Mode = mode;
         Output = output ?? Console.Out;
         _redactionTable = new RedactionTable();
         _redactedOutput = new RedactingTextWriter(Output, _redactionTable);
+        _log = new Logger(_redactedOutput, verbosity);
     }
 
     public TargetGraph Graph { get; }
     public ExecutionMode Mode { get; }
     public TextWriter Output { get; }
+
+    /// <summary>The build-script logger. Verbosity controls what reaches the sink.</summary>
+    public Logger Log => _log;
 
     /// <summary>
     /// The redaction table populated as targets run. Exposed for tests and
@@ -66,54 +75,54 @@ public sealed class Executor
     private ExecutionResult RunPlan(IReadOnlyList<TargetSpec> order, IReadOnlyList<string> roots)
     {
         var rootLabel = string.Join(", ", roots);
-        _redactedOutput.WriteLine($"Plan for '{rootLabel}' ({order.Count} target{(order.Count == 1 ? "" : "s")}):");
-        _redactedOutput.WriteLine();
+        _log.WriteRaw($"Plan for '{rootLabel}' ({order.Count} target{(order.Count == 1 ? "" : "s")}):");
+        _log.WriteRaw();
         foreach (var spec in order)
         {
             var phase = spec.Phase == Phase.None ? string.Empty : $" [{spec.Phase}]";
-            _redactedOutput.WriteLine($"  {spec.Name}{phase}");
+            _log.WriteRaw($"  {spec.Name}{phase}");
             if (spec.Dependencies.Count > 0)
-                _redactedOutput.WriteLine($"    depends on: {string.Join(", ", spec.Dependencies)}");
+                _log.WriteRaw($"    depends on: {string.Join(", ", spec.Dependencies)}");
             if (spec.OrderAfter.Count > 0)
-                _redactedOutput.WriteLine($"    after: {string.Join(", ", spec.OrderAfter)}");
+                _log.WriteRaw($"    after: {string.Join(", ", spec.OrderAfter)}");
             if (spec.OrderBefore.Count > 0)
-                _redactedOutput.WriteLine($"    before: {string.Join(", ", spec.OrderBefore)}");
+                _log.WriteRaw($"    before: {string.Join(", ", spec.OrderBefore)}");
             if (spec.Triggers.Count > 0)
-                _redactedOutput.WriteLine($"    triggers: {string.Join(", ", spec.Triggers)}");
+                _log.WriteRaw($"    triggers: {string.Join(", ", spec.Triggers)}");
             if (spec.TriggeredBy.Count > 0)
-                _redactedOutput.WriteLine($"    triggered by: {string.Join(", ", spec.TriggeredBy)}");
+                _log.WriteRaw($"    triggered by: {string.Join(", ", spec.TriggeredBy)}");
             if (spec.OnlyWhenConditions.Count > 0)
                 foreach (var c in spec.OnlyWhenConditions)
-                    _redactedOutput.WriteLine($"    only when: {c.ExpressionText}");
+                    _log.WriteRaw($"    only when: {c.ExpressionText}");
             if (spec.Requirements.Count > 0)
                 foreach (var c in spec.Requirements)
-                    _redactedOutput.WriteLine($"    requires: {c.ExpressionText}");
+                    _log.WriteRaw($"    requires: {c.ExpressionText}");
             if (spec.AssuredAfterFailure)
-                _redactedOutput.WriteLine($"    assured-after-failure: yes");
+                _log.WriteRaw($"    assured-after-failure: yes");
             if (spec.RequiresNetwork || spec.RequiresDocker || spec.RequiresAdmin)
             {
                 var caps = new List<string>();
                 if (spec.RequiresNetwork) caps.Add("network");
                 if (spec.RequiresDocker) caps.Add("docker");
                 if (spec.RequiresAdmin) caps.Add("admin");
-                _redactedOutput.WriteLine($"    requires: {string.Join(", ", caps)}");
+                _log.WriteRaw($"    requires: {string.Join(", ", caps)}");
             }
         }
-        _redactedOutput.Flush();
+        _log.Flush();
         return new ExecutionResult { Mode = Mode, ExitCode = 0, TargetsTraversed = order.Count };
     }
 
     private ExecutionResult RunDryRun(IReadOnlyList<TargetSpec> order)
     {
-        _redactedOutput.WriteLine("[DRY RUN] No commands will execute.");
-        _redactedOutput.WriteLine();
+        _log.WriteRaw("[DRY RUN] No commands will execute.");
+        _log.WriteRaw();
         var planCount = 0;
         foreach (var spec in order)
         {
             if (CheckSkippedByCondition(spec) is { } skipReason)
             {
-                _redactedOutput.WriteLine($"[skipped] {spec.Name} — only-when condition false: {skipReason}");
-                _redactedOutput.WriteLine();
+                _log.WriteRaw($"[skipped] {spec.Name} — only-when condition false: {skipReason}");
+                _log.WriteRaw();
                 continue;
             }
             foreach (var factory in spec.PlanFactories)
@@ -126,7 +135,7 @@ public sealed class Executor
                 }
             }
         }
-        _redactedOutput.Flush();
+        _log.Flush();
         return new ExecutionResult { Mode = Mode, ExitCode = 0, TargetsTraversed = order.Count, CommandPlansPrinted = planCount };
     }
 
@@ -143,14 +152,14 @@ public sealed class Executor
             // After a failure, only AssuredAfterFailure targets keep running.
             if (buildFailedAt.HasValue && !spec.AssuredAfterFailure)
             {
-                _redactedOutput.WriteLine($"==> {spec.Name} (not run: build already failed)");
+                _log.WriteRaw($"==> {spec.Name} (not run: build already failed)");
                 records.Add(TargetExecutionRecord.NotRun(spec.Name));
                 continue;
             }
 
             if (CheckSkippedByCondition(spec) is { } skipReason)
             {
-                _redactedOutput.WriteLine($"==> {spec.Name} (skipped: {skipReason})");
+                _log.WriteRaw($"==> {spec.Name} (skipped: {skipReason})");
                 skipped.Add(spec.Name);
                 records.Add(TargetExecutionRecord.Skipped(spec.Name, skipReason));
                 continue;
@@ -159,7 +168,7 @@ public sealed class Executor
             // Hard preconditions (Requires) — failure here aborts the build.
             if (CheckRequirementsFailed(spec) is { } reqFail)
             {
-                _redactedOutput.WriteLine($"==> {spec.Name} REQUIRES failed: {reqFail}");
+                _log.WriteRaw($"==> {spec.Name} REQUIRES failed: {reqFail}");
                 records.Add(TargetExecutionRecord.Failed(spec.Name, TimeSpan.Zero, $"Requires failed: {reqFail}"));
                 if (!buildFailedAt.HasValue)
                 {
@@ -169,7 +178,7 @@ public sealed class Executor
                 continue;
             }
 
-            _redactedOutput.WriteLine($"==> {spec.Name}");
+            _log.WriteRaw($"==> {spec.Name}");
             var sw = Stopwatch.StartNew();
 
             try
@@ -186,7 +195,7 @@ public sealed class Executor
                         exit = ProcessRunner.Execute(plan, _redactedOutput, _redactedOutput);
                         if (exit != 0)
                         {
-                            _redactedOutput.WriteLine($"==> {spec.Name} FAILED (exit {exit})");
+                            _log.WriteRaw($"==> {spec.Name} FAILED (exit {exit})");
                             if (spec.FailureMode == FailureMode.Continue) continue;
                             sw.Stop();
                             records.Add(TargetExecutionRecord.Failed(spec.Name, sw.Elapsed, $"exit {exit}"));
@@ -206,13 +215,13 @@ public sealed class Executor
             catch (Exception ex) when (spec.FailureMode == FailureMode.Continue)
             {
                 sw.Stop();
-                _redactedOutput.WriteLine($"==> {spec.Name} threw {ex.GetType().Name}; continuing per FailureMode.Continue: {ex.Message}");
+                _log.WriteRaw($"==> {spec.Name} threw {ex.GetType().Name}; continuing per FailureMode.Continue: {ex.Message}");
                 records.Add(TargetExecutionRecord.Done(spec.Name, sw.Elapsed));
             }
             catch (Exception ex)
             {
                 sw.Stop();
-                _redactedOutput.WriteLine($"==> {spec.Name} threw {ex.GetType().Name}: {ex.Message}");
+                _log.WriteRaw($"==> {spec.Name} threw {ex.GetType().Name}: {ex.Message}");
                 records.Add(TargetExecutionRecord.Failed(spec.Name, sw.Elapsed, ex.Message));
                 if (!buildFailedAt.HasValue)
                 {
@@ -226,7 +235,7 @@ public sealed class Executor
 
         buildSw.Stop();
         WriteBuildSummary(records, buildSw.Elapsed, buildFailedAt?.Name);
-        _redactedOutput.Flush();
+        _log.Flush();
 
         var traversed = records.Count(r => r.Status is not TargetStatus.NotRun);
         return new ExecutionResult
@@ -273,8 +282,8 @@ public sealed class Executor
         var handlers = Graph.HandlersFor(failedTargetName);
         if (handlers.Count == 0) yield break;
 
-        _redactedOutput.WriteLine();
-        _redactedOutput.WriteLine($"Running {handlers.Count} failure handler{(handlers.Count == 1 ? "" : "s")} for {failedTargetName}:");
+        _log.WriteRaw();
+        _log.WriteRaw($"Running {handlers.Count} failure handler{(handlers.Count == 1 ? "" : "s")} for {failedTargetName}:");
         foreach (var handler in handlers)
         {
             yield return handler.Name;
@@ -285,10 +294,10 @@ public sealed class Executor
                 {
                     if (CheckSkippedByCondition(sub) is { } skip)
                     {
-                        _redactedOutput.WriteLine($"==> {sub.Name} (skipped: {skip})");
+                        _log.WriteRaw($"==> {sub.Name} (skipped: {skip})");
                         continue;
                     }
-                    _redactedOutput.WriteLine($"==> {sub.Name} (failure handler for {failedTargetName})");
+                    _log.WriteRaw($"==> {sub.Name} (failure handler for {failedTargetName})");
                     foreach (var action in sub.Actions) action();
                     foreach (var factory in sub.PlanFactories)
                     {
@@ -298,7 +307,7 @@ public sealed class Executor
                             var subExit = ProcessRunner.Execute(plan, _redactedOutput, _redactedOutput);
                             if (subExit != 0)
                             {
-                                _redactedOutput.WriteLine($"==> {sub.Name} (handler) FAILED (exit {subExit}); original failure stands");
+                                _log.WriteRaw($"==> {sub.Name} (handler) FAILED (exit {subExit}); original failure stands");
                                 break;
                             }
                         }
@@ -307,7 +316,7 @@ public sealed class Executor
             }
             catch (Exception hex)
             {
-                _redactedOutput.WriteLine($"==> {handler.Name} (handler) threw {hex.GetType().Name}: {hex.Message}; original failure stands");
+                _log.WriteRaw($"==> {handler.Name} (handler) threw {hex.GetType().Name}: {hex.Message}; original failure stands");
             }
         }
     }
@@ -316,12 +325,12 @@ public sealed class Executor
     {
         if (records.Count == 0) return;
 
-        _redactedOutput.WriteLine();
-        _redactedOutput.WriteLine("─── Build Summary ───");
+        _log.WriteRaw();
+        _log.WriteRaw("─── Build Summary ───");
         var nameWidth = Math.Max("Target".Length, records.Max(r => r.Name.Length));
         var statusWidth = Math.Max("Status".Length, records.Max(r => r.Status.ToString().Length));
 
-        _redactedOutput.WriteLine($"  {"Target".PadRight(nameWidth)}   {"Status".PadRight(statusWidth)}   Duration");
+        _log.WriteRaw($"  {"Target".PadRight(nameWidth)}   {"Status".PadRight(statusWidth)}   Duration");
         foreach (var r in records)
         {
             var statusGlyph = r.Status switch
@@ -336,15 +345,15 @@ public sealed class Executor
             var durationText = r.Status is TargetStatus.Skipped or TargetStatus.NotRun
                 ? string.Empty
                 : FormatDuration(r.Duration);
-            _redactedOutput.WriteLine($"  {r.Name.PadRight(nameWidth)}   {status.PadRight(statusWidth + 2)}   {durationText}");
+            _log.WriteRaw($"  {r.Name.PadRight(nameWidth)}   {status.PadRight(statusWidth + 2)}   {durationText}");
         }
-        _redactedOutput.WriteLine($"  {"".PadRight(nameWidth)}   {"".PadRight(statusWidth + 2)}   ─────");
-        _redactedOutput.WriteLine($"  {"Total".PadRight(nameWidth)}   {"".PadRight(statusWidth + 2)}   {FormatDuration(duration)}");
+        _log.WriteRaw($"  {"".PadRight(nameWidth)}   {"".PadRight(statusWidth + 2)}   ─────");
+        _log.WriteRaw($"  {"Total".PadRight(nameWidth)}   {"".PadRight(statusWidth + 2)}   {FormatDuration(duration)}");
 
         if (failedTargetName is not null)
         {
-            _redactedOutput.WriteLine();
-            _redactedOutput.WriteLine($"BUILD FAILED — first failed target: {failedTargetName}");
+            _log.WriteRaw();
+            _log.WriteRaw($"BUILD FAILED — first failed target: {failedTargetName}");
         }
     }
 

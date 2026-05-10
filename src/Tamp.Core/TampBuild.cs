@@ -88,7 +88,7 @@ public abstract class TampBuild
             var targets = CollectTargets(build);
             var graph = new TargetGraph(targets);
 
-            var (mode, targetNames, listMode, showAll) = ParseInvocation(args, targets);
+            var (mode, targetNames, listMode, showAll, verbosity) = ParseInvocation(args, targets);
 
             if (listMode is ListMode.Flat)
             {
@@ -108,7 +108,7 @@ public abstract class TampBuild
                 return 2;
             }
 
-            var executor = new Executor(graph, mode);
+            var executor = new Executor(graph, mode, output: null, verbosity);
             return executor.Run(targetNames.ToArray()).ExitCode;
         }
         catch (InvalidOperationException ex)
@@ -126,12 +126,13 @@ public abstract class TampBuild
     /// given, the build defaults to a target literally named <c>Default</c>
     /// or <c>Ci</c> if present.
     /// </remarks>
-    internal static (ExecutionMode, IReadOnlyList<string>, ListMode, bool ShowAll) ParseInvocation(
+    internal static (ExecutionMode, IReadOnlyList<string>, ListMode, bool ShowAll, LogLevel Verbosity) ParseInvocation(
         string[] args, IReadOnlyDictionary<string, TargetSpec> targets)
     {
         var mode = ExecutionMode.Run;
         var listMode = ListMode.None;
         var showAll = false;
+        var verbosity = LogLevel.Info;
         var targetNames = new List<string>();
         var skipNextValue = false;
 
@@ -144,9 +145,9 @@ public abstract class TampBuild
             {
                 var rest = raw[2..];
                 var key = rest;
-                var hasInlineValue = false;
+                string? inlineValue = null;
                 var eq = key.IndexOf('=');
-                if (eq >= 0) { key = key[..eq]; hasInlineValue = true; }
+                if (eq >= 0) { inlineValue = key[(eq + 1)..]; key = key[..eq]; }
                 switch (key)
                 {
                     case "dry-run": mode = ExecutionMode.DryRun; break;
@@ -154,12 +155,19 @@ public abstract class TampBuild
                     case "list": listMode = ListMode.Flat; break;
                     case "list-tree": listMode = ListMode.Tree; break;
                     case "all": showAll = true; break;
+                    case "verbosity":
+                        var verbValue = inlineValue ?? (i + 1 < args.Length ? args[++i] : null);
+                        if (verbValue is not null) verbosity = ParseVerbosity(verbValue);
+                        break;
+                    case "quiet": verbosity = LogLevel.Error; break;
+                    case "verbose": verbosity = LogLevel.Debug; break;
+                    case "diagnostic": verbosity = LogLevel.Trace; break;
                     default:
                         // Unknown flag is a parameter binding handled by
                         // ParameterBinder. If the next arg is a value (not
                         // a flag), it's the parameter's value — skip it so
                         // it doesn't get picked up as a target name.
-                        if (!hasInlineValue && i + 1 < args.Length
+                        if (inlineValue is null && i + 1 < args.Length
                             && !args[i + 1].StartsWith("--", StringComparison.Ordinal))
                             skipNextValue = true;
                         break;
@@ -175,8 +183,20 @@ public abstract class TampBuild
             else if (targets.ContainsKey("Ci")) targetNames.Add("Ci");
         }
 
-        return (mode, targetNames, listMode, showAll);
+        return (mode, targetNames, listMode, showAll, verbosity);
     }
+
+    /// <summary>Maps user-facing verbosity strings to internal log levels.</summary>
+    internal static LogLevel ParseVerbosity(string value) => value.Trim().ToLowerInvariant() switch
+    {
+        "quiet" or "q" => LogLevel.Error,
+        "minimal" or "m" => LogLevel.Warn,
+        "normal" or "n" => LogLevel.Info,
+        "verbose" or "v" => LogLevel.Debug,
+        "diagnostic" or "d" => LogLevel.Trace,
+        _ => throw new InvalidOperationException(
+            $"Unknown --verbosity value '{value}'. Use quiet, minimal, normal, verbose, or diagnostic."),
+    };
 
     private static void PrintTargetList(IReadOnlyDictionary<string, TargetSpec> targets, bool tree, bool showAll)
     {

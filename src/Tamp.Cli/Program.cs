@@ -88,11 +88,13 @@ internal static class Program
         Console.WriteLine("  tamp --version | --help");
         Console.WriteLine();
         Console.WriteLine("FLAGS:");
-        Console.WriteLine("  --dry-run     Print every CommandPlan that would run; execute nothing.");
-        Console.WriteLine("  --plan        Render the target dependency graph; execute nothing.");
-        Console.WriteLine("  --list        List top-level targets (or all, if none are marked).");
-        Console.WriteLine("  --list-tree   List targets with their dependencies.");
-        Console.WriteLine("  --all         Used with --list / --list-tree: show internal targets too.");
+        Console.WriteLine("  --dry-run            Print every CommandPlan that would run; execute nothing.");
+        Console.WriteLine("  --plan               Render the target dependency graph; execute nothing.");
+        Console.WriteLine("  --list               List top-level targets (or all, if none are marked).");
+        Console.WriteLine("  --list-tree          List targets with their dependencies.");
+        Console.WriteLine("  --all                Used with --list / --list-tree: show internal targets too.");
+        Console.WriteLine("  --verbosity <level>  quiet | minimal | normal | verbose | diagnostic");
+        Console.WriteLine("  --quiet | -v         Shortcuts for --verbosity quiet | --verbosity verbose");
         Console.WriteLine();
         Console.WriteLine("Tamp locates a build project under build/, _build/, or .tamp/build/ in the");
         Console.WriteLine("current working tree (or an ancestor) and forwards the invocation to it.");
