@@ -1,4 +1,5 @@
 using Tamp;
+using Tamp.DotNetCoverage.V18;
 using Tamp.NetCli.V10;
 
 /// <summary>
@@ -16,7 +17,11 @@ class Build : TampBuild
     [Solution] readonly Solution Solution = null!;
     [GitRepository] readonly GitRepository Git = null!;
 
+    [NuGetPackage("dotnet-coverage", Version = "18.6.2")]
+    readonly Tool DotNetCoverageTool = null!;
+
     AbsolutePath Artifacts => RootDirectory / "artifacts";
+    AbsolutePath CoverageDir => Artifacts / "coverage";
 
     Target Info => _ => _
         .Description("Print build context (branch, commit, configuration) — useful at the top of CI logs.")
@@ -55,13 +60,28 @@ class Build : TampBuild
     Target Test => _ => _
         .TopLevel()
         .DependsOn(nameof(Compile))
-        .Description("Run the test suite across all TFMs.")
+        .Description("Run the test suite across all TFMs with --collect 'Code Coverage' for portable coverage.")
+        // dotnet test --collect goes through the vstest data-collector plumbing,
+        // which works on Linux, Windows, and macOS arm64. dotnet-coverage's
+        // standalone `collect` verb relies on CORECLR_PROFILER env vars that
+        // macOS Hardened Runtime strips when dotnet test spawns the testhost,
+        // so the profiler never attaches and the coverage file is empty.
         .Executes(() => DotNet.Test(s => s
             .SetProject(Solution.Path)
             .SetConfiguration(Configuration)
             .SetNoBuild(true)
             .AddLogger("trx;LogFileName=test-results.trx")
-            .SetResultsDirectory(Artifacts / "test-results")));
+            .AddDataCollector("Code Coverage")
+            .SetResultsDirectory(CoverageDir)));
+
+    Target Coverage => _ => _
+        .TopLevel()
+        .DependsOn(nameof(Test))
+        .Description("Merge the per-test-run .coverage files and emit Cobertura XML for Sonar / coverage gates.")
+        .Executes(() => DotNetCoverage.Merge(DotNetCoverageTool, m => m
+            .AddInputs(CoverageDir.GlobFiles("**/*.coverage"))
+            .SetOutput(CoverageDir / "coverage.cobertura.xml")
+            .SetOutputFormat(CoverageFormat.Cobertura)));
 
     Target Pack => _ => _
         .TopLevel()

@@ -1,4 +1,4 @@
-namespace Tamp.DotNetCoverage.V17;
+namespace Tamp.DotNetCoverage.V18;
 
 /// <summary>Log levels accepted by <c>dotnet-coverage</c>.</summary>
 public enum CoverageLogLevel

@@ -1,4 +1,4 @@
-namespace Tamp.DotNetCoverage.V17;
+namespace Tamp.DotNetCoverage.V18;
 
 /// <summary>
 /// Settings for <c>dotnet-coverage merge</c>. Merges multiple coverage

@@ -149,6 +149,38 @@ public sealed class DotNetTests
     }
 
     [Fact]
+    public void Test_Collectors_Each_Emit_Their_Own_Collect_Pair()
+    {
+        var plan = DotNet.Test(s => s
+            .AddDataCollector("Code Coverage")
+            .AddDataCollector("XPlat Code Coverage"));
+        var args = plan.Arguments;
+        var first = IndexOf(args, "--collect");
+        var second = IndexOf(args, "--collect", first + 1);
+        Assert.Equal("Code Coverage", args[first + 1]);
+        Assert.Equal("XPlat Code Coverage", args[second + 1]);
+    }
+
+    [Fact]
+    public void Test_Collector_Value_With_Spaces_Stays_Single_Argument()
+    {
+        // Regression guard: vstest expects "--collect" followed by a single
+        // arg containing spaces (e.g. "Code Coverage"). The wrapper must NOT
+        // split on whitespace — that's the spawner's job to quote.
+        var plan = DotNet.Test(s => s.AddDataCollector("Code Coverage;Format=Cobertura"));
+        var args = plan.Arguments;
+        var i = IndexOf(args, "--collect");
+        Assert.Equal("Code Coverage;Format=Cobertura", args[i + 1]);
+    }
+
+    [Fact]
+    public void Test_No_Collector_Means_No_Collect_Flag_At_All()
+    {
+        var plan = DotNet.Test();
+        Assert.DoesNotContain("--collect", plan.Arguments);
+    }
+
+    [Fact]
     public void Test_BlameHang_With_Timeout_Emits_Milliseconds()
     {
         var plan = DotNet.Test(s => s.SetBlameHang(true).SetBlameHangTimeout(TimeSpan.FromSeconds(45)));

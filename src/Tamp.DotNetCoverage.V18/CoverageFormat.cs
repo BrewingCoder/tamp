@@ -1,4 +1,4 @@
-namespace Tamp.DotNetCoverage.V17;
+namespace Tamp.DotNetCoverage.V18;
 
 /// <summary>
 /// Output formats supported by <c>dotnet-coverage</c>.

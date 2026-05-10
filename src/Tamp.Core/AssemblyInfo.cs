@@ -8,4 +8,4 @@ using System.Runtime.CompilerServices;
 [assembly: InternalsVisibleTo("Tamp.Docker.V27")]
 [assembly: InternalsVisibleTo("Tamp.SonarScanner.V10")]
 [assembly: InternalsVisibleTo("Tamp.SonarScannerCli.V6")]
-[assembly: InternalsVisibleTo("Tamp.DotNetCoverage.V17")]
+[assembly: InternalsVisibleTo("Tamp.DotNetCoverage.V18")]

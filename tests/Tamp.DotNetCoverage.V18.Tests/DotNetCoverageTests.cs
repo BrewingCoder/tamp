@@ -1,6 +1,6 @@
 using Xunit;
 
-namespace Tamp.DotNetCoverage.V17.Tests;
+namespace Tamp.DotNetCoverage.V18.Tests;
 
 public sealed class DotNetCoverageTests
 {

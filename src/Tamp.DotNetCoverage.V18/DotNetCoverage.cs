@@ -1,4 +1,4 @@
-namespace Tamp.DotNetCoverage.V17;
+namespace Tamp.DotNetCoverage.V18;
 
 /// <summary>
 /// Wrapper for Microsoft's <c>dotnet-coverage</c> tool (current major

@@ -25,7 +25,7 @@
     <Project Path="src/Tamp.NetCli.V10/Tamp.NetCli.V10.csproj" />
     <Project Path="src/Tamp.SonarScanner.V10/Tamp.SonarScanner.V10.csproj" />
     <Project Path="src/Tamp.SonarScannerCli.V6/Tamp.SonarScannerCli.V6.csproj" />
-    <Project Path="src/Tamp.DotNetCoverage.V17/Tamp.DotNetCoverage.V17.csproj" />
+    <Project Path="src/Tamp.DotNetCoverage.V18/Tamp.DotNetCoverage.V18.csproj" />
   </Folder>
   <Folder Name="/build/">
     <Project Path="build/Build.csproj" />
@@ -39,6 +39,6 @@
     <Project Path="tests/Tamp.NetCli.V10.Tests/Tamp.NetCli.V10.Tests.csproj" />
     <Project Path="tests/Tamp.SonarScanner.V10.Tests/Tamp.SonarScanner.V10.Tests.csproj" />
     <Project Path="tests/Tamp.SonarScannerCli.V6.Tests/Tamp.SonarScannerCli.V6.Tests.csproj" />
-    <Project Path="tests/Tamp.DotNetCoverage.V17.Tests/Tamp.DotNetCoverage.V17.Tests.csproj" />
+    <Project Path="tests/Tamp.DotNetCoverage.V18.Tests/Tamp.DotNetCoverage.V18.Tests.csproj" />
   </Folder>
 </Solution>

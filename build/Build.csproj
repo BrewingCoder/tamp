@@ -26,6 +26,7 @@
   <ItemGroup>
     <ProjectReference Include="..\src\Tamp.Core\Tamp.Core.csproj" />
     <ProjectReference Include="..\src\Tamp.NetCli.V10\Tamp.NetCli.V10.csproj" />
+    <ProjectReference Include="..\src\Tamp.DotNetCoverage.V18\Tamp.DotNetCoverage.V18.csproj" />
   </ItemGroup>
 
 </Project>

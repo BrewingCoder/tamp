@@ -7,6 +7,7 @@ public sealed class DotNetTestSettings : DotNetSettingsBase
     public bool NoRestore { get; set; }
     public string? Filter { get; set; }
     public List<string> Loggers { get; } = [];
+    public List<string> DataCollectors { get; } = [];
     public string? ResultsDirectory { get; set; }
     public string? Settings { get; set; }
     public string? Runtime { get; set; }
@@ -21,6 +22,7 @@ public sealed class DotNetTestSettings : DotNetSettingsBase
     public DotNetTestSettings SetNoRestore(bool v) { NoRestore = v; return this; }
     public DotNetTestSettings SetFilter(string? filter) { Filter = filter; return this; }
     public DotNetTestSettings AddLogger(string logger) { Loggers.Add(logger); return this; }
+    public DotNetTestSettings AddDataCollector(string name) { DataCollectors.Add(name); return this; }
     public DotNetTestSettings SetResultsDirectory(string? path) { ResultsDirectory = path; return this; }
     public DotNetTestSettings SetSettings(string? path) { Settings = path; return this; }
     public DotNetTestSettings SetRuntime(string? runtime) { Runtime = runtime; return this; }
@@ -40,6 +42,7 @@ public sealed class DotNetTestSettings : DotNetSettingsBase
         if (NoRestore) yield return "--no-restore";
         if (!string.IsNullOrEmpty(Filter)) { yield return "--filter"; yield return Filter!; }
         foreach (var l in Loggers) { yield return "--logger"; yield return l; }
+        foreach (var c in DataCollectors) { yield return "--collect"; yield return c; }
         if (!string.IsNullOrEmpty(ResultsDirectory)) { yield return "--results-directory"; yield return ResultsDirectory!; }
         if (!string.IsNullOrEmpty(Settings)) { yield return "--settings"; yield return Settings!; }
         if (!string.IsNullOrEmpty(Runtime)) { yield return "--runtime"; yield return Runtime!; }

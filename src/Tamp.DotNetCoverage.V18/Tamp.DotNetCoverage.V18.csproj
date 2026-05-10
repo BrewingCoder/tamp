@@ -2,12 +2,12 @@
 
   <PropertyGroup>
     <TargetFrameworks>net8.0;net9.0;net10.0</TargetFrameworks>
-    <RootNamespace>Tamp.DotNetCoverage.V17</RootNamespace>
-    <AssemblyName>Tamp.DotNetCoverage.V17</AssemblyName>
+    <RootNamespace>Tamp.DotNetCoverage.V18</RootNamespace>
+    <AssemblyName>Tamp.DotNetCoverage.V18</AssemblyName>
   </PropertyGroup>
 
   <PropertyGroup Label="Package">
-    <PackageId>Tamp.DotNetCoverage.V17</PackageId>
+    <PackageId>Tamp.DotNetCoverage.V18</PackageId>
     <Version>0.0.1-alpha</Version>
     <Description>Tamp wrapper for the Microsoft dotnet-coverage tool (current major v17). Cross-platform code-coverage collection + merge + format conversion (binary, xml, cobertura). For Sonar integration, the typical flow is collect → merge -f cobertura → feed the cobertura path to SonarScanner.</Description>
     <IsPackable>true</IsPackable>

@@ -2,7 +2,7 @@
 
   <PropertyGroup>
     <TargetFrameworks>net8.0;net9.0;net10.0</TargetFrameworks>
-    <RootNamespace>Tamp.DotNetCoverage.V17.Tests</RootNamespace>
+    <RootNamespace>Tamp.DotNetCoverage.V18.Tests</RootNamespace>
     <IsPackable>false</IsPackable>
     <IsTestProject>true</IsTestProject>
   </PropertyGroup>
@@ -16,7 +16,7 @@
   </ItemGroup>
 
   <ItemGroup>
-    <ProjectReference Include="..\..\src\Tamp.DotNetCoverage.V17\Tamp.DotNetCoverage.V17.csproj" />
+    <ProjectReference Include="..\..\src\Tamp.DotNetCoverage.V18\Tamp.DotNetCoverage.V18.csproj" />
   </ItemGroup>
 
 </Project>
