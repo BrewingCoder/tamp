@@ -1,0 +1,25 @@
+name: Release
+
+# Stub. The real publish steps land once nuget.org trusted-publishing
+# policy is live and the user/login parameters are settled. Trigger is
+# manual-only for now so an accidental tag push can't fire an empty
+# (or worse, half-configured) publish job.
+
+on:
+  workflow_dispatch:
+
+permissions:
+  id-token: write   # OIDC token for nuget.org trusted publishing
+  contents: read
+
+jobs:
+  publish:
+    name: publish to nuget.org
+    runs-on: ubuntu-latest
+    environment: release
+    steps:
+      - name: Stub
+        run: |
+          echo "Release workflow stub. Pack + nuget login + push land in a follow-up commit."
+          echo "ref: $GITHUB_REF"
+          echo "sha: $GITHUB_SHA"
