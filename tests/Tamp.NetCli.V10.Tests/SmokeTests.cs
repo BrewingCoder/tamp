@@ -7,7 +7,7 @@ public sealed class SmokeTests
     [Fact]
     public void Assembly_Loads()
     {
-        var assembly = typeof(Tamp.NetCli.V10.Placeholder).Assembly;
+        var assembly = typeof(Tamp.NetCli.V10.DotNet).Assembly;
         Assert.Equal("Tamp.NetCli.V10", assembly.GetName().Name);
     }
 }
