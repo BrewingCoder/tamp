@@ -1,3 +1,5 @@
+using System.Runtime.CompilerServices;
+
 namespace Tamp;
 
 /// <summary>
@@ -10,6 +12,13 @@ namespace Tamp;
 /// <see cref="ITargetDefinition"/> and reads the configured target back out.
 /// </summary>
 public delegate ITargetDefinition Target(ITargetDefinition definition);
+
+/// <summary>
+/// A condition the executor evaluates at runtime to decide whether a target
+/// runs. The expression text is captured at the call site so dry-run output
+/// and skip messages can explain <em>why</em> a target was skipped.
+/// </summary>
+public sealed record TargetCondition(Func<bool> Predicate, string ExpressionText);
 
 /// <summary>
 /// Fluent surface for declaring everything Tamp needs to know about a target:
@@ -26,6 +35,49 @@ public interface ITargetDefinition
 
     // Dependencies (by target name; nameof(OtherTarget) is the recommended idiom)
     ITargetDefinition DependsOn(params string[] targetNames);
+
+    /// <summary>
+    /// Order constraint: this target runs after <paramref name="targetNames"/>
+    /// when both happen to be in the plan. Does NOT pull them in.
+    /// </summary>
+    ITargetDefinition After(params string[] targetNames);
+
+    /// <summary>
+    /// Order constraint: this target runs before <paramref name="targetNames"/>
+    /// when both happen to be in the plan. Does NOT pull them in.
+    /// </summary>
+    ITargetDefinition Before(params string[] targetNames);
+
+    /// <summary>
+    /// Outgoing trigger: when this target runs, also pull in
+    /// <paramref name="targetNames"/>. Distinct from <see cref="DependsOn"/>
+    /// — triggers add downstream targets to the plan.
+    /// </summary>
+    ITargetDefinition Triggers(params string[] targetNames);
+
+    /// <summary>
+    /// Incoming trigger: this target runs whenever any of
+    /// <paramref name="targetNames"/> runs. Equivalent to declaring
+    /// <see cref="Triggers"/> on each of those targets.
+    /// </summary>
+    ITargetDefinition TriggeredBy(params string[] targetNames);
+
+    /// <summary>
+    /// Catch-style handler: this target runs only when one of
+    /// <paramref name="targetNames"/> failed. Failure handlers are not part
+    /// of the normal plan; their own dep tree runs first; their failure does
+    /// not reverse the original failure's exit code.
+    /// </summary>
+    ITargetDefinition OnFailureOf(params string[] targetNames);
+
+    /// <summary>
+    /// Conditional skip. The <paramref name="expressionText"/> is captured
+    /// at the call site so dry-run output and skip messages explain the
+    /// reason. Multiple <c>OnlyWhen</c> calls accumulate (all must hold).
+    /// </summary>
+    ITargetDefinition OnlyWhen(
+        Func<bool> condition,
+        [CallerArgumentExpression(nameof(condition))] string expressionText = "");
 
     // Resources
     ITargetDefinition Consumes(Resource resource, ConsumeMode mode);
@@ -72,6 +124,12 @@ public interface ITargetDefinition
 internal sealed class TargetDefinition : ITargetDefinition
 {
     private readonly List<string> _dependencies = [];
+    private readonly List<string> _orderAfter = [];
+    private readonly List<string> _orderBefore = [];
+    private readonly List<string> _triggers = [];
+    private readonly List<string> _triggeredBy = [];
+    private readonly List<string> _onFailureOf = [];
+    private readonly List<TargetCondition> _onlyWhen = [];
     private readonly List<(Resource Resource, ConsumeMode Mode)> _resources = [];
     private readonly List<(string Tool, string? MinVersion)> _toolRequirements = [];
     private readonly List<string> _tags = [];
@@ -123,6 +181,44 @@ internal sealed class TargetDefinition : ITargetDefinition
     public ITargetDefinition DependsOn(params string[] targetNames)
     {
         _dependencies.AddRange(targetNames);
+        return this;
+    }
+
+    public ITargetDefinition After(params string[] targetNames)
+    {
+        _orderAfter.AddRange(targetNames);
+        return this;
+    }
+
+    public ITargetDefinition Before(params string[] targetNames)
+    {
+        _orderBefore.AddRange(targetNames);
+        return this;
+    }
+
+    public ITargetDefinition Triggers(params string[] targetNames)
+    {
+        _triggers.AddRange(targetNames);
+        return this;
+    }
+
+    public ITargetDefinition TriggeredBy(params string[] targetNames)
+    {
+        _triggeredBy.AddRange(targetNames);
+        return this;
+    }
+
+    public ITargetDefinition OnFailureOf(params string[] targetNames)
+    {
+        _onFailureOf.AddRange(targetNames);
+        return this;
+    }
+
+    public ITargetDefinition OnlyWhen(
+        Func<bool> condition,
+        [CallerArgumentExpression(nameof(condition))] string expressionText = "")
+    {
+        _onlyWhen.Add(new TargetCondition(condition, expressionText));
         return this;
     }
 
@@ -204,6 +300,12 @@ internal sealed class TargetDefinition : ITargetDefinition
         Description = _description,
         Tags = _tags.ToArray(),
         Dependencies = _dependencies.ToArray(),
+        OrderAfter = _orderAfter.ToArray(),
+        OrderBefore = _orderBefore.ToArray(),
+        Triggers = _triggers.ToArray(),
+        TriggeredBy = _triggeredBy.ToArray(),
+        OnFailureOf = _onFailureOf.ToArray(),
+        OnlyWhenConditions = _onlyWhen.ToArray(),
         Resources = _resources.ToArray(),
         RequiresNetwork = _requiresNetwork,
         RequiresDocker = _requiresDocker,
@@ -241,6 +343,12 @@ public sealed record TargetSpec
     public string? Description { get; init; }
     public IReadOnlyList<string> Tags { get; init; } = Array.Empty<string>();
     public IReadOnlyList<string> Dependencies { get; init; } = Array.Empty<string>();
+    public IReadOnlyList<string> OrderAfter { get; init; } = Array.Empty<string>();
+    public IReadOnlyList<string> OrderBefore { get; init; } = Array.Empty<string>();
+    public IReadOnlyList<string> Triggers { get; init; } = Array.Empty<string>();
+    public IReadOnlyList<string> TriggeredBy { get; init; } = Array.Empty<string>();
+    public IReadOnlyList<string> OnFailureOf { get; init; } = Array.Empty<string>();
+    public IReadOnlyList<TargetCondition> OnlyWhenConditions { get; init; } = Array.Empty<TargetCondition>();
     public IReadOnlyList<(Resource Resource, ConsumeMode Mode)> Resources { get; init; }
         = Array.Empty<(Resource, ConsumeMode)>();
     public bool RequiresNetwork { get; init; }

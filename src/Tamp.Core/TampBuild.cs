@@ -42,7 +42,7 @@ public abstract class TampBuild
             var targets = CollectTargets(build);
             var graph = new TargetGraph(targets);
 
-            var (mode, targetName, listMode) = ParseInvocation(args, targets);
+            var (mode, targetNames, listMode) = ParseInvocation(args, targets);
 
             if (listMode is ListMode.Flat)
             {
@@ -55,7 +55,7 @@ public abstract class TampBuild
                 return 0;
             }
 
-            if (targetName is null)
+            if (targetNames.Count == 0)
             {
                 Console.Error.WriteLine("No target specified and no `Default` or `Ci` target found.");
                 Console.Error.WriteLine("Use `--list` to see available targets.");
@@ -63,7 +63,7 @@ public abstract class TampBuild
             }
 
             var executor = new Executor(graph, mode);
-            return executor.Run(targetName).ExitCode;
+            return executor.Run(targetNames.ToArray()).ExitCode;
         }
         catch (InvalidOperationException ex)
         {
@@ -72,47 +72,62 @@ public abstract class TampBuild
         }
     }
 
-    /// <summary>Parse the build invocation: target name plus mode flags.</summary>
+    /// <summary>Parse the build invocation: zero-or-more target names plus mode flags.</summary>
     /// <remarks>
-    /// First non-flag token is the target name. Flags <c>--dry-run</c>,
-    /// <c>--plan</c>, <c>--list</c>, <c>--list-tree</c> control mode. If no
-    /// target is given, the build defaults to a target literally named
-    /// <c>Default</c> or <c>Ci</c> if present.
+    /// All non-flag tokens are target names; the executor runs them as a
+    /// deduped invoked set. Flags <c>--dry-run</c>, <c>--plan</c>,
+    /// <c>--list</c>, <c>--list-tree</c> control mode. If no targets are
+    /// given, the build defaults to a target literally named <c>Default</c>
+    /// or <c>Ci</c> if present.
     /// </remarks>
-    internal static (ExecutionMode, string?, ListMode) ParseInvocation(
+    internal static (ExecutionMode, IReadOnlyList<string>, ListMode) ParseInvocation(
         string[] args, IReadOnlyDictionary<string, TargetSpec> targets)
     {
         var mode = ExecutionMode.Run;
         var listMode = ListMode.None;
-        string? targetName = null;
+        var targetNames = new List<string>();
+        var skipNextValue = false;
 
-        foreach (var raw in args)
+        for (var i = 0; i < args.Length; i++)
         {
+            var raw = args[i];
+            if (skipNextValue) { skipNextValue = false; continue; }
+
             if (raw.StartsWith("--", StringComparison.Ordinal))
             {
-                var key = raw[2..];
+                var rest = raw[2..];
+                var key = rest;
+                var hasInlineValue = false;
                 var eq = key.IndexOf('=');
-                if (eq >= 0) key = key[..eq];
+                if (eq >= 0) { key = key[..eq]; hasInlineValue = true; }
                 switch (key)
                 {
                     case "dry-run": mode = ExecutionMode.DryRun; break;
                     case "plan": mode = ExecutionMode.Plan; break;
                     case "list": listMode = ListMode.Flat; break;
                     case "list-tree": listMode = ListMode.Tree; break;
-                    // Other flags are parameter bindings and handled elsewhere.
+                    default:
+                        // Unknown flag is a parameter binding handled by
+                        // ParameterBinder. If the next arg is a value (not
+                        // a flag), it's the parameter's value — skip it so
+                        // it doesn't get picked up as a target name.
+                        if (!hasInlineValue && i + 1 < args.Length
+                            && !args[i + 1].StartsWith("--", StringComparison.Ordinal))
+                            skipNextValue = true;
+                        break;
                 }
                 continue;
             }
-            if (targetName is null) targetName = raw;
+            targetNames.Add(raw);
         }
 
-        if (targetName is null && listMode is ListMode.None)
+        if (targetNames.Count == 0 && listMode is ListMode.None)
         {
-            if (targets.ContainsKey("Default")) targetName = "Default";
-            else if (targets.ContainsKey("Ci")) targetName = "Ci";
+            if (targets.ContainsKey("Default")) targetNames.Add("Default");
+            else if (targets.ContainsKey("Ci")) targetNames.Add("Ci");
         }
 
-        return (mode, targetName, listMode);
+        return (mode, targetNames, listMode);
     }
 
     private static void PrintTargetList(IReadOnlyDictionary<string, TargetSpec> targets, bool tree)

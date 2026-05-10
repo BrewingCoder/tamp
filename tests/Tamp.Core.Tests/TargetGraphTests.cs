@@ -63,19 +63,18 @@ public sealed class TargetGraphTests
     [Fact]
     public void Cycle_Throws()
     {
-        var graph = new TargetGraph(Specs(
+        // Cycle detection is fail-fast at construction time.
+        var ex = Assert.Throws<InvalidOperationException>(() => new TargetGraph(Specs(
             ("A", ["B"]),
-            ("B", ["A"])));
-        var ex = Assert.Throws<InvalidOperationException>(() => graph.TopologicalOrderFor("A"));
+            ("B", ["A"]))));
         Assert.Contains("Cycle detected", ex.Message);
     }
 
     [Fact]
     public void Self_Cycle_Throws()
     {
-        var graph = new TargetGraph(Specs(
-            ("A", ["A"])));
-        var ex = Assert.Throws<InvalidOperationException>(() => graph.TopologicalOrderFor("A"));
+        var ex = Assert.Throws<InvalidOperationException>(() => new TargetGraph(Specs(
+            ("A", ["A"]))));
         Assert.Contains("Cycle detected", ex.Message);
     }
 
