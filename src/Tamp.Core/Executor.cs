@@ -7,16 +7,27 @@ namespace Tamp;
 /// </summary>
 public sealed class Executor
 {
+    private readonly RedactionTable _redactionTable;
+    private readonly RedactingTextWriter _redactedOutput;
+
     public Executor(TargetGraph graph, ExecutionMode mode = ExecutionMode.Run, TextWriter? output = null)
     {
         Graph = graph ?? throw new ArgumentNullException(nameof(graph));
         Mode = mode;
         Output = output ?? Console.Out;
+        _redactionTable = new RedactionTable();
+        _redactedOutput = new RedactingTextWriter(Output, _redactionTable);
     }
 
     public TargetGraph Graph { get; }
     public ExecutionMode Mode { get; }
     public TextWriter Output { get; }
+
+    /// <summary>
+    /// The redaction table populated as targets run. Exposed for tests and
+    /// for callers who want to register additional secrets ahead of time.
+    /// </summary>
+    public RedactionTable RedactionTable => _redactionTable;
 
     /// <summary>Run / dry-run / plan the target named <paramref name="rootTargetName"/>.</summary>
     public ExecutionResult Run(string rootTargetName)
@@ -34,30 +45,31 @@ public sealed class Executor
 
     private ExecutionResult RunPlan(IReadOnlyList<TargetSpec> order, string rootName)
     {
-        Output.WriteLine($"Plan for '{rootName}' ({order.Count} target{(order.Count == 1 ? "" : "s")}):");
-        Output.WriteLine();
+        _redactedOutput.WriteLine($"Plan for '{rootName}' ({order.Count} target{(order.Count == 1 ? "" : "s")}):");
+        _redactedOutput.WriteLine();
         foreach (var spec in order)
         {
             var phase = spec.Phase == Phase.None ? string.Empty : $" [{spec.Phase}]";
-            Output.WriteLine($"  {spec.Name}{phase}");
+            _redactedOutput.WriteLine($"  {spec.Name}{phase}");
             if (spec.Dependencies.Count > 0)
-                Output.WriteLine($"    depends on: {string.Join(", ", spec.Dependencies)}");
+                _redactedOutput.WriteLine($"    depends on: {string.Join(", ", spec.Dependencies)}");
             if (spec.RequiresNetwork || spec.RequiresDocker || spec.RequiresAdmin)
             {
                 var caps = new List<string>();
                 if (spec.RequiresNetwork) caps.Add("network");
                 if (spec.RequiresDocker) caps.Add("docker");
                 if (spec.RequiresAdmin) caps.Add("admin");
-                Output.WriteLine($"    requires: {string.Join(", ", caps)}");
+                _redactedOutput.WriteLine($"    requires: {string.Join(", ", caps)}");
             }
         }
+        _redactedOutput.Flush();
         return new ExecutionResult { Mode = Mode, ExitCode = 0, TargetsTraversed = order.Count };
     }
 
     private ExecutionResult RunDryRun(IReadOnlyList<TargetSpec> order)
     {
-        Output.WriteLine("[DRY RUN] No commands will execute.");
-        Output.WriteLine();
+        _redactedOutput.WriteLine("[DRY RUN] No commands will execute.");
+        _redactedOutput.WriteLine();
         var planCount = 0;
         foreach (var spec in order)
         {
@@ -68,11 +80,13 @@ public sealed class Executor
             {
                 foreach (var plan in factory())
                 {
-                    ProcessRunner.Print(plan, spec.Name, sourceModule: null, Output);
+                    _redactionTable.RegisterAll(plan);
+                    ProcessRunner.Print(plan, spec.Name, sourceModule: null, _redactedOutput);
                     planCount++;
                 }
             }
         }
+        _redactedOutput.Flush();
         return new ExecutionResult { Mode = Mode, ExitCode = 0, TargetsTraversed = order.Count, CommandPlansPrinted = planCount };
     }
 
@@ -82,7 +96,7 @@ public sealed class Executor
         foreach (var spec in order)
         {
             traversed++;
-            Output.WriteLine($"==> {spec.Name}");
+            _redactedOutput.WriteLine($"==> {spec.Name}");
 
             // Capability preflight: fail fast on missing capabilities the
             // target declared as required.
@@ -97,11 +111,13 @@ public sealed class Executor
                 {
                     foreach (var plan in factory())
                     {
-                        var exit = ProcessRunner.Execute(plan, Output, Output);
+                        _redactionTable.RegisterAll(plan);
+                        var exit = ProcessRunner.Execute(plan, _redactedOutput, _redactedOutput);
                         if (exit != 0)
                         {
-                            Output.WriteLine($"==> {spec.Name} FAILED (exit {exit})");
+                            _redactedOutput.WriteLine($"==> {spec.Name} FAILED (exit {exit})");
                             if (spec.FailureMode == FailureMode.Continue) continue;
+                            _redactedOutput.Flush();
                             return new ExecutionResult { Mode = Mode, ExitCode = exit, TargetsTraversed = traversed, FailedTarget = spec.Name };
                         }
                     }
@@ -109,15 +125,17 @@ public sealed class Executor
             }
             catch (Exception ex) when (spec.FailureMode == FailureMode.Continue)
             {
-                Output.WriteLine($"==> {spec.Name} threw {ex.GetType().Name}; continuing per FailureMode.Continue: {ex.Message}");
+                _redactedOutput.WriteLine($"==> {spec.Name} threw {ex.GetType().Name}; continuing per FailureMode.Continue: {ex.Message}");
             }
             catch (Exception ex)
             {
-                Output.WriteLine($"==> {spec.Name} threw {ex.GetType().Name}: {ex.Message}");
+                _redactedOutput.WriteLine($"==> {spec.Name} threw {ex.GetType().Name}: {ex.Message}");
+                _redactedOutput.Flush();
                 return new ExecutionResult { Mode = Mode, ExitCode = 1, TargetsTraversed = traversed, FailedTarget = spec.Name };
             }
         }
 
+        _redactedOutput.Flush();
         return new ExecutionResult { Mode = Mode, ExitCode = 0, TargetsTraversed = traversed };
     }
 }
