@@ -6,6 +6,17 @@ name: Release
 # stops trusting requests.
 
 on:
+  # Tag-driven release: pushing a v* tag triggers a real publish.
+  # The tag name (minus leading "v") is passed to dotnet pack as the
+  # canonical version, overriding whatever's in csproj — the tag is
+  # the source of truth for shipped versions.
+  push:
+    tags:
+      - 'v*'
+
+  # Manual override. Defaults to dry_run=true so an accidental click
+  # never publishes; flip to false to force a manual publish (e.g.,
+  # the pre-launch land-grab pattern).
   workflow_dispatch:
     inputs:
       dry_run:
@@ -42,6 +53,15 @@ jobs:
             9.0.x
             10.0.x
 
+      # On tag pushes, the tag is the source of truth for the version.
+      # Strips the leading "v" (so v0.1.0 → 0.1.0) and exports
+      # PACKAGE_VERSION for the pack steps to consume via -p:Version.
+      # On workflow_dispatch, PACKAGE_VERSION is left empty and pack
+      # uses whatever <Version> is set in each csproj.
+      - name: Resolve version from tag
+        if: github.event_name == 'push'
+        run: echo "PACKAGE_VERSION=${GITHUB_REF_NAME#v}" >> "$GITHUB_ENV"
+
       - name: Restore
         run: dotnet restore Tamp.slnx
 
@@ -49,13 +69,19 @@ jobs:
       #   Tamp.Core, Tamp.Cli (bare command), Tamp.NetCli.V8/V9/V10,
       #   Tamp.Docker.V27.
       - name: Pack (default flavor)
-        run: dotnet pack Tamp.slnx --no-restore --configuration Release --output ./artifacts
+        run: |
+          version_arg=""
+          if [ -n "$PACKAGE_VERSION" ]; then version_arg="-p:Version=$PACKAGE_VERSION"; fi
+          dotnet pack Tamp.slnx --no-restore --configuration Release --output ./artifacts $version_arg
 
       # Cli ships a second nupkg with command name "dotnet-tamp" so
       # `dotnet tamp ci` works (Cake-style). Same code, different
       # PackageId + ToolCommandName via the CliFlavor MSBuild prop.
       - name: Pack Cli (dotnet-verb flavor)
-        run: dotnet pack src/Tamp.Cli/Tamp.Cli.csproj --configuration Release --output ./artifacts -p:CliFlavor=DotnetVerb
+        run: |
+          version_arg=""
+          if [ -n "$PACKAGE_VERSION" ]; then version_arg="-p:Version=$PACKAGE_VERSION"; fi
+          dotnet pack src/Tamp.Cli/Tamp.Cli.csproj --configuration Release --output ./artifacts -p:CliFlavor=DotnetVerb $version_arg
 
       - name: List packages
         run: ls -la ./artifacts/
@@ -66,8 +92,10 @@ jobs:
         with:
           user: BrewingCoder
 
+      # Push runs on tag push always, and on workflow_dispatch only
+      # when dry_run is explicitly false.
       - name: Push packages
-        if: ${{ inputs.dry_run == false }}
+        if: ${{ github.event_name == 'push' || inputs.dry_run == false }}
         env:
           NUGET_API_KEY: ${{ steps.nuget-login.outputs.NUGET_API_KEY }}
         run: |
@@ -83,7 +111,7 @@ jobs:
           done
 
       - name: Dry-run summary
-        if: ${{ inputs.dry_run == true }}
+        if: ${{ github.event_name == 'workflow_dispatch' && inputs.dry_run == true }}
         run: |
           echo "DRY RUN — would have pushed:"
           ls -la ./artifacts/*.nupkg
