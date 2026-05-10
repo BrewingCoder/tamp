@@ -507,7 +507,13 @@ Tamp is community-maintained. Contributions from humans and AI agents are welcom
 
 The package convention is the contract. Anyone can publish `Tamp.{ToolFamily}.V{n}` packages without coordinating with core maintainers. Core maintainers reserve the right to bless packages as "official first-party" but do not gatekeep what can exist.
 
-The license will remain permissive (MIT or Apache 2.0, TBD before v0).
+Tamp is MIT-licensed. See [LICENSE](LICENSE) and [docs/adr/0007-license-mit.md](docs/adr/0007-license-mit.md) for the rationale.
+
+---
+
+## License
+
+MIT. See [LICENSE](LICENSE).
 
 ---
 
