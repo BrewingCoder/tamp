@@ -12,3 +12,6 @@ using System.Runtime.CompilerServices;
 [assembly: InternalsVisibleTo("Tamp.EFCore.V8")]
 [assembly: InternalsVisibleTo("Tamp.EFCore.V9")]
 [assembly: InternalsVisibleTo("Tamp.EFCore.V10")]
+[assembly: InternalsVisibleTo("Tamp.GitVersion.V6")]
+[assembly: InternalsVisibleTo("Tamp.ReportGenerator.V5")]
+[assembly: InternalsVisibleTo("Tamp.GitHubCli.V2")]
