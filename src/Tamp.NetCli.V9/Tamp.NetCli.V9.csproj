@@ -8,7 +8,6 @@
 
   <PropertyGroup Label="Package">
     <PackageId>Tamp.NetCli.V9</PackageId>
-    <Version>1.0.0</Version>
     <Description>Tamp wrapper for the .NET 9 SDK CLI (`dotnet build`, `test`, `pack`, `publish`, `restore`, ...). For long-term projects that adopted .NET 9 STS to surface early features and will roll forward to LTS before ship.</Description>
     <IsPackable>true</IsPackable>
   </PropertyGroup>

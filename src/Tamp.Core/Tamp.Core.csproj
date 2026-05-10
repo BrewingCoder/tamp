@@ -8,7 +8,6 @@
 
   <PropertyGroup Label="Package">
     <PackageId>Tamp.Core</PackageId>
-    <Version>1.0.0</Version>
     <Description>Tamp's small core: target executor, parameter injection, host detection, secret handling, dry-run support. The lifecycle bet is that this stays small and tool wrappers ship as independently-versioned packages.</Description>
     <IsPackable>true</IsPackable>
   </PropertyGroup>

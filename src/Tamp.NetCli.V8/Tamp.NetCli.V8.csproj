@@ -8,7 +8,6 @@
 
   <PropertyGroup Label="Package">
     <PackageId>Tamp.NetCli.V8</PackageId>
-    <Version>1.0.0</Version>
     <Description>Tamp wrapper for the .NET 8 LTS SDK CLI (`dotnet build`, `test`, `pack`, `publish`, `restore`, ...). For locked-down environments and federal/regulated dev shops where newer SDKs are not approved.</Description>
     <IsPackable>true</IsPackable>
   </PropertyGroup>

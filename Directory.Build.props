@@ -32,4 +32,9 @@
     -->
   </PropertyGroup>
 
+
+  <PropertyGroup Label="Tamp central version (TAM-81 — single source of truth for all packable projects in this repo). Bump this before tagging a release; csprojs do NOT carry their own Version element.">
+    <Version>1.0.0</Version>
+  </PropertyGroup>
+
 </Project>
