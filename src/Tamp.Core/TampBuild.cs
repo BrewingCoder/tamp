@@ -187,6 +187,49 @@ public abstract class TampBuild
         _ => "local",
     };
 
+    /// <summary>
+    /// Emit a CI-vendor-specific masking instruction when a <see cref="Secret"/>
+    /// resolves. The instruction tells the CI runner to scrub the value
+    /// from subsequent log lines, even ones produced by child processes
+    /// the wrapper spawns. Tamp's own <c>RedactingTextWriter</c> handles
+    /// in-process scrubbing; this adds vendor-side defense in depth.
+    /// </summary>
+    /// <remarks>
+    /// <list type="bullet">
+    ///   <item><b>GitHub Actions</b> — emits <c>::add-mask::&lt;value&gt;</c>.
+    ///         Subsequent occurrences in stdout / stderr are replaced
+    ///         with <c>***</c> by the runner.</item>
+    ///   <item><b>Azure DevOps</b> — emits
+    ///         <c>##vso[task.setvariable variable=...;issecret=true]&lt;value&gt;</c>
+    ///         which registers the value with the Azure Pipelines
+    ///         secret store + masking.</item>
+    ///   <item><b>TeamCity / Jenkins / GitLab / Travis / others</b> —
+    ///         no portable equivalent; relies on Tamp's in-process
+    ///         redaction only.</item>
+    ///   <item><b>Local</b> — no-op; nothing reads the instruction.</item>
+    /// </list>
+    /// </remarks>
+    private static void RegisterSecretForCiMasking(Secret secret)
+    {
+        var host = HostProfileBuilder.Build();
+        if (host.Ci is null) return;
+
+        var value = secret.Reveal();
+        switch (host.Ci)
+        {
+            case CiVendor.GitHubActions:
+                Console.WriteLine($"::add-mask::{value}");
+                break;
+            case CiVendor.AzureDevOps:
+                // The variable name is just the secret's label; the
+                // important bit is issecret=true which registers the
+                // value with the pipeline's masking store.
+                Console.WriteLine($"##vso[task.setvariable variable=TAMP_SECRET_{secret.Name};issecret=true]{value}");
+                break;
+            // Other vendors: no portable instruction. Rely on in-process redaction.
+        }
+    }
+
     /// <summary>Top-level build entry point. Pass <c>args</c> from <c>Main</c>.</summary>
     public static int Execute<T>(string[] args) where T : TampBuild, new()
     {
@@ -198,6 +241,13 @@ public abstract class TampBuild
             // [Parameter] reads inside a target's authoring lambda see the
             // resolved values.
             ParameterBinder.Bind(build, args, Environment.GetEnvironmentVariable);
+
+            // Secret binding: env-var leg (TAM-78). The onResolved callback
+            // emits CI-vendor masking instructions (e.g. ::add-mask:: on
+            // GitHub Actions) so subsequent log lines don't leak the value.
+            // EnsureResolved (interactive prompt + future legs) runs later,
+            // just before a target that .Requires() the secret executes.
+            SecretBinder.Bind(build, Environment.GetEnvironmentVariable, RegisterSecretForCiMasking);
 
             var targets = CollectTargets(build);
             var graph = new TargetGraph(targets);

@@ -10,9 +10,24 @@ Pre-1.0 versions may break public API freely between minor versions; the `0.x` l
 
 ### Known issues
 
-- **TAM-78** — `[Secret]` env-var resolver missing. The attribute and `Secret` type are wired through `CommandPlan.Secrets` and the redaction table, but `ParameterBinder` doesn't bind `[Secret]` fields. Build scripts must read env vars manually until 1.0.1. See satellite READMEs for the workaround pattern.
-- **TAM-79** — full `[Secret]` resolution chain (CI vendor store / keychain / env / interactive prompt) deferred to a v1.x feature release.
+- **OS keychain leg** of `[Secret]` resolution chain (macOS Keychain / libsecret / Windows Credential Manager) — explicitly deferred from TAM-79 to a future ticket. Cross-platform native-store integration is complex enough to deserve its own design cycle.
 - **Windows CI** — two `Tamp.DotNetCoverage.V18` tests fail on `windows-latest` with path-separator assertions. Linux + macOS CI green; tests pass locally on macOS arm64. Tracked separately.
+
+## [1.0.1] — 2026-05-10
+
+### Added
+
+- **`SecretBinder`** wires `[Secret]`-annotated members to the env-var resolution chain promised by `SecretAttribute`'s docstring (TAM-78). Resolution order: explicit assignment in the build script > `EnvironmentVariable` override > `UPPER_SNAKE_CASE` of member name. `Secret.Name` is sourced from the attribute's `Description` (or explicit `Name` override) so the redaction label is human-readable.
+- **Interactive prompt leg** via `SecretBinder.EnsureResolved` (TAM-79). When a `[Secret]` field is still null at .Requires() time AND a TTY is attached AND the attribute's `AllowInteractivePrompt` is true (default), the runner can prompt for the value. Opt out per-secret with `[Secret(AllowInteractivePrompt = false)]` for CI-only secrets that must never block on input.
+- **CI vendor masking** integration (TAM-79). When a `Secret` resolves under GitHub Actions, Tamp emits `::add-mask::<value>` so the runner scrubs the value from subsequent log lines (defense in depth beyond Tamp's in-process `RedactingTextWriter`). Azure DevOps gets `##vso[task.setvariable variable=...;issecret=true]<value>`. Other vendors fall back to in-process redaction only.
+- Tamp main's own `Sonar` target now uses `[Secret] readonly Secret SonarToken` (was a manual `Environment.GetEnvironmentVariable` workaround). The pattern propagates to all satellite repos in the same release.
+
+### Changed
+
+- `SecretAttribute` gains an `AllowInteractivePrompt` property (default `true`).
+
+[Unreleased]: https://github.com/tamp-build/tamp/compare/v1.0.1...HEAD
+[1.0.1]: https://github.com/tamp-build/tamp/releases/tag/v1.0.1
 
 ## [1.0.0] — 2026-05-10
 
@@ -70,6 +85,5 @@ The architectural decisions captured before and during this run are recorded as 
 - ADR 0009 — Governance and namespace policy
 - ADR 0015 — Target framework strategy (multi-target net8/net9/net10, follow Microsoft support calendar)
 
-[Unreleased]: https://github.com/tamp-build/tamp/compare/v1.0.0...HEAD
 [1.0.0]: https://github.com/tamp-build/tamp/releases/tag/v1.0.0
 [0.0.1-alpha]: https://github.com/tamp-build/tamp/releases/tag/v0.0.1-alpha

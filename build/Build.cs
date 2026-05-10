@@ -24,12 +24,11 @@ class Build : TampBuild
     [NuGetPackage("dotnet-sonarscanner", Version = "10.4.1")]
     readonly Tool SonarTool = null!;
 
-    // Tamp.Core 1.0.0's [Secret] resolver isn't wired up yet (TAM-78).
-    // Read SONAR_TOKEN directly. The Secret type still gives us redaction.
-    static readonly Secret? SonarToken =
-        Environment.GetEnvironmentVariable("SONAR_TOKEN") is { Length: > 0 } v
-            ? new Secret("SonarQube admin token", v)
-            : null;
+    // Resolved by SecretBinder from the SONAR_TOKEN env var (TAM-78,
+    // shipped in Tamp.Core 1.0.1). CI masking fires automatically on
+    // GitHub Actions / Azure DevOps when the value is bound.
+    [Secret("SonarQube admin token", EnvironmentVariable = "SONAR_TOKEN")]
+    readonly Secret SonarToken = null!;
 
     [Parameter("Sonar host URL", EnvironmentVariable = "SONAR_HOST_URL")]
     readonly string SonarHostUrl = "https://sonar.brewingcoder.com";
@@ -151,7 +150,7 @@ class Build : TampBuild
         .Executes(() => SonarScanner.Begin(SonarTool, s => s
             .SetProjectKey(SonarProjectKey)
             .SetHostUrl(SonarHostUrl)
-            .SetToken(SonarToken!)
+            .SetToken(SonarToken)
             .SetProperty("sonar.cs.vstest.reportsPaths", $"{CoverageDir.Value}/**/*.trx")
             // Coverage via Coverlet → OpenCover XML (TAM-80). Glob picks up
             // one file per test project (lands at <results>/<guid>/coverage.opencover.xml).
@@ -168,7 +167,7 @@ class Build : TampBuild
         .Description("Finalize SonarScanner and submit results to the server.")
         .DependsOn(nameof(Test))
         .Requires(() => SonarToken != null)
-        .Executes(() => SonarScanner.End(SonarTool, s => s.SetToken(SonarToken!)));
+        .Executes(() => SonarScanner.End(SonarTool, s => s.SetToken(SonarToken)));
 
     Target Sonar => _ => _
         .TopLevel()

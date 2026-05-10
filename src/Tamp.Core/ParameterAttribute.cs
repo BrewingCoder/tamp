@@ -47,4 +47,13 @@ public sealed class SecretAttribute : Attribute
     public string? Description { get; }
     public string? EnvironmentVariable { get; init; }
     public string? Name { get; init; }
+
+    /// <summary>
+    /// When <c>true</c> (default), <see cref="SecretBinder.EnsureResolved"/>
+    /// may prompt for the value at run time if it wasn't supplied via
+    /// the earlier resolution legs and an interactive TTY is attached.
+    /// Set to <c>false</c> on secrets that must come from CI / a secret
+    /// store — keeps a CI run from hanging waiting for input.
+    /// </summary>
+    public bool AllowInteractivePrompt { get; init; } = true;
 }
