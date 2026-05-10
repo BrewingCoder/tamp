@@ -30,6 +30,12 @@ public sealed class ValueInjectionTests
         public string Greeting = "default";
     }
 
+    private sealed class FixedInjectedReadonlyFieldBuild : TampBuild
+    {
+        [FixedInjection("from-readonly-field")]
+        public readonly string Greeting = "default";
+    }
+
     private sealed class ThrowingInjectedBuild : TampBuild
     {
         [ThrowingInjection]
@@ -50,6 +56,17 @@ public sealed class ValueInjectionTests
         var build = new FixedInjectedFieldBuild();
         ParameterBinder.Bind(build, [], _ => null);
         Assert.Equal("from-field", build.Greeting);
+    }
+
+    [Fact]
+    public void ValueInjection_Sets_Readonly_Field()
+    {
+        // The NUKE-style idiom — `[Solution] readonly Solution Solution;`
+        // — has to work, otherwise the standard build-script pattern is
+        // broken. Reflection bypasses the readonly guarantee here.
+        var build = new FixedInjectedReadonlyFieldBuild();
+        ParameterBinder.Bind(build, [], _ => null);
+        Assert.Equal("from-readonly-field", build.Greeting);
     }
 
     [Fact]

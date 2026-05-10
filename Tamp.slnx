@@ -24,6 +24,9 @@
     <Project Path="src/Tamp.NetCli.V9/Tamp.NetCli.V9.csproj" />
     <Project Path="src/Tamp.NetCli.V10/Tamp.NetCli.V10.csproj" />
   </Folder>
+  <Folder Name="/build/">
+    <Project Path="build/Build.csproj" />
+  </Folder>
   <Folder Name="/tests/">
     <Project Path="tests/Tamp.Core.Tests/Tamp.Core.Tests.csproj" />
     <Project Path="tests/Tamp.Cli.Tests/Tamp.Cli.Tests.csproj" />

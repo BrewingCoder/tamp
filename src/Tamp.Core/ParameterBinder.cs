@@ -102,7 +102,9 @@ public static class ParameterBinder
         {
             var attr = f.GetCustomAttribute<ValueInjectionAttribute>(inherit: true);
             if (attr is null) continue;
-            if (f.IsInitOnly) continue;
+            // readonly fields are deliberately allowed: reflection can still
+            // write them, and the NUKE-style `readonly Solution Solution;`
+            // idiom is what most build scripts use.
             try
             {
                 var value = attr.GetValue(f, f.FieldType);
@@ -132,7 +134,9 @@ public static class ParameterBinder
         {
             var attr = f.GetCustomAttribute<ParameterAttribute>(inherit: true);
             if (attr is null) continue;
-            if (f.IsInitOnly) continue;  // readonly fields can't be bound at runtime.
+            // readonly fields are deliberately allowed — reflection can still
+            // write them. Match the NUKE-style `[Parameter] readonly string X;`
+            // idiom that build scripts conventionally use.
             yield return new AnnotatedMember(f.Name, f.FieldType, attr,
                 (instance, value) => f.SetValue(instance, value));
         }

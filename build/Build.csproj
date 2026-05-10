@@ -1,0 +1,31 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <!--
+    Tamp's self-hosted build script. Drives the project's own
+    restore / build / test / pack flow via the framework being
+    built. Single-target net10 (only place we don't multi-target —
+    the build script just runs on whichever .NET 10 SDK is local).
+    IsPackable=false; the build script is never published.
+
+    ProjectReferences (not PackageReferences) wire to the in-tree
+    Tamp.Core and Tamp.NetCli.V10. That means a change to either
+    flows through to the next `dotnet run` of this project
+    without a republish round-trip.
+  -->
+
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <TargetFramework>net10.0</TargetFramework>
+    <RootNamespace>Tamp.Build</RootNamespace>
+    <AssemblyName>Tamp.Build</AssemblyName>
+    <IsPackable>false</IsPackable>
+    <!-- Build scripts don't need most of the inherited package metadata. -->
+    <NoWarn>$(NoWarn);CS1591</NoWarn>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\src\Tamp.Core\Tamp.Core.csproj" />
+    <ProjectReference Include="..\src\Tamp.NetCli.V10\Tamp.NetCli.V10.csproj" />
+  </ItemGroup>
+
+</Project>
