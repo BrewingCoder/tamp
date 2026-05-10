@@ -1,0 +1,1 @@
+/Users/scott/repos/tamp/.sonarqube/out/19

@@ -1,0 +1,3 @@
+﻿/Users/scott/repos/tamp/src/Tamp.Cli/AssemblyInfo.cs
+/Users/scott/repos/tamp/src/Tamp.Cli/BuildProjectLocator.cs
+/Users/scott/repos/tamp/src/Tamp.Cli/Program.cs

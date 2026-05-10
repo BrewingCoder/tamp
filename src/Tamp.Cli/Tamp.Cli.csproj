@@ -7,7 +7,7 @@
   </PropertyGroup>
 
   <PropertyGroup Label="Global tool">
-    <Version>0.0.1-alpha</Version>
+    <Version>1.0.0</Version>
     <IsPackable>true</IsPackable>
     <PackAsTool>true</PackAsTool>
     <RollForward>Major</RollForward>

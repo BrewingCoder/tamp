@@ -17,6 +17,10 @@
     <PackageVersion Include="Microsoft.SourceLink.GitHub" Version="8.0.0" />
   </ItemGroup>
 
+  <ItemGroup Label="Cross-repo Tamp packages (used by build script only — wrappers consumed from their satellite repos)">
+    <PackageVersion Include="Tamp.SonarScanner.V10" Version="0.1.0" />
+  </ItemGroup>
+
   <ItemGroup Label="Core dependencies">
     <PackageVersion Include="Microsoft.Extensions.FileSystemGlobbing" Version="9.0.0" />
   </ItemGroup>

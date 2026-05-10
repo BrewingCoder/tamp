@@ -8,7 +8,7 @@
 
   <PropertyGroup Label="Package">
     <PackageId>Tamp.NetCli.V10</PackageId>
-    <Version>0.0.1-alpha</Version>
+    <Version>1.0.0</Version>
     <Description>Tamp wrapper for the .NET 10 SDK CLI (`dotnet build`, `test`, `pack`, `publish`, `restore`, ...). Pinned to .NET 10's CLI surface; sibling packages exist for other supported majors.</Description>
     <IsPackable>true</IsPackable>
   </PropertyGroup>

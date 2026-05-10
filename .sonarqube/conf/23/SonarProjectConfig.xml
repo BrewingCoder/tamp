@@ -1,0 +1,9 @@
+<?xml version="1.0" encoding="utf-8"?>
+<SonarProjectConfig xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xmlns:xsd="http://www.w3.org/2001/XMLSchema" xmlns="http://www.sonarsource.com/msbuild/analyzer/2021/1">
+  <AnalysisConfigPath>/Users/scott/repos/tamp/.sonarqube/conf/SonarQubeAnalysisConfig.xml</AnalysisConfigPath>
+  <ProjectPath>/Users/scott/repos/tamp/src/Tamp.NetCli.V9/Tamp.NetCli.V9.csproj</ProjectPath>
+  <FilesToAnalyzePath>/Users/scott/repos/tamp/.sonarqube/conf/23/FilesToAnalyze.txt</FilesToAnalyzePath>
+  <OutPath>/Users/scott/repos/tamp/.sonarqube/out/23</OutPath>
+  <ProjectType>Product</ProjectType>
+  <TargetFramework>net8.0</TargetFramework>
+</SonarProjectConfig>

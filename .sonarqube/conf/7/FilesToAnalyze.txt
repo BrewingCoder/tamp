@@ -1,0 +1,5 @@
+﻿/Users/scott/repos/tamp/src/Tamp.DotNetCoverage.V18/AssemblyInfo.cs
+/Users/scott/repos/tamp/src/Tamp.DotNetCoverage.V18/CoverageFormat.cs
+/Users/scott/repos/tamp/src/Tamp.DotNetCoverage.V18/DotNetCoverage.cs
+/Users/scott/repos/tamp/src/Tamp.DotNetCoverage.V18/DotNetCoverageCollectSettings.cs
+/Users/scott/repos/tamp/src/Tamp.DotNetCoverage.V18/DotNetCoverageMergeSettings.cs

@@ -27,6 +27,14 @@
     <ProjectReference Include="..\src\Tamp.Core\Tamp.Core.csproj" />
     <ProjectReference Include="..\src\Tamp.NetCli.V10\Tamp.NetCli.V10.csproj" />
     <ProjectReference Include="..\src\Tamp.DotNetCoverage.V18\Tamp.DotNetCoverage.V18.csproj" />
+
+    <!--
+      Cross-repo PackageReference: Tamp.SonarScanner.V10 ships from
+      tamp-build/tamp-sonar. Pinned to 0.1.0, the first non-placeholder
+      release from the satellite dogfood pipeline. CPM-enabled via
+      Directory.Packages.props.
+    -->
+    <PackageReference Include="Tamp.SonarScanner.V10" />
   </ItemGroup>
 
 </Project>

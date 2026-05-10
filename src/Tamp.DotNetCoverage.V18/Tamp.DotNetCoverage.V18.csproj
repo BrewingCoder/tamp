@@ -8,7 +8,7 @@
 
   <PropertyGroup Label="Package">
     <PackageId>Tamp.DotNetCoverage.V18</PackageId>
-    <Version>0.0.1-alpha</Version>
+    <Version>1.0.0</Version>
     <Description>Tamp wrapper for the Microsoft dotnet-coverage tool (current major v17). Cross-platform code-coverage collection + merge + format conversion (binary, xml, cobertura). For Sonar integration, the typical flow is collect → merge -f cobertura → feed the cobertura path to SonarScanner.</Description>
     <IsPackable>true</IsPackable>
   </PropertyGroup>
