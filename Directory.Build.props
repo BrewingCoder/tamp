@@ -24,8 +24,12 @@
     <PackageTags>tamp;build;automation;ci;dotnet</PackageTags>
     <PublishRepositoryUrl>true</PublishRepositoryUrl>
     <EmbedUntrackedSources>true</EmbedUntrackedSources>
-    <IncludeSymbols>true</IncludeSymbols>
-    <SymbolPackageFormat>snupkg</SymbolPackageFormat>
+    <!--
+      Debug info is embedded in the DLL (DebugType=embedded above) so
+      consumers can step into Tamp from their builds without an extra
+      snupkg. We deliberately do NOT emit a separate symbol package:
+      embedded PDBs leave nothing for snupkg to pack, which trips NU5017.
+    -->
   </PropertyGroup>
 
 </Project>
