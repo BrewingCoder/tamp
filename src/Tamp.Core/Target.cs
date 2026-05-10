@@ -93,6 +93,25 @@ public interface ITargetDefinition
         Func<bool> condition,
         [CallerArgumentExpression(nameof(condition))] string expressionText = "");
 
+    /// <summary>
+    /// Hard precondition. Distinct from <see cref="OnlyWhen"/>: a failing
+    /// <c>Requires</c> aborts the build with the captured expression text,
+    /// rather than silently skipping. Multiple calls accumulate.
+    /// </summary>
+    ITargetDefinition Requires(
+        Func<bool> condition,
+        [CallerArgumentExpression(nameof(condition))] string expressionText = "");
+
+    /// <summary>
+    /// Marks the target as cleanup that should always run, even after
+    /// earlier targets in the plan have failed. Distinct from
+    /// <see cref="OnFailureOf"/>: OnFailureOf is conditional on a specific
+    /// target failing, AssuredAfterFailure is unconditional — the target
+    /// runs whether the build succeeded or failed, as long as it appears
+    /// in the plan.
+    /// </summary>
+    ITargetDefinition AssuredAfterFailure();
+
     // Resources
     ITargetDefinition Consumes(Resource resource, ConsumeMode mode);
 
@@ -144,6 +163,7 @@ internal sealed class TargetDefinition : ITargetDefinition
     private readonly List<string> _triggeredBy = [];
     private readonly List<string> _onFailureOf = [];
     private readonly List<TargetCondition> _onlyWhen = [];
+    private readonly List<TargetCondition> _requires = [];
     private readonly List<(Resource Resource, ConsumeMode Mode)> _resources = [];
     private readonly List<(string Tool, string? MinVersion)> _toolRequirements = [];
     private readonly List<string> _tags = [];
@@ -165,6 +185,7 @@ internal sealed class TargetDefinition : ITargetDefinition
     private int? _maxParallelism;
     private int? _maxHostParallelism;
     private bool _idempotent;
+    private bool _assuredAfterFailure;
     private Func<string>? _inputHashProducer;
     private RunMode _runMode = Tamp.RunMode.Always;
     private FailureMode _failureMode = Tamp.FailureMode.Fatal;
@@ -240,6 +261,20 @@ internal sealed class TargetDefinition : ITargetDefinition
         [CallerArgumentExpression(nameof(condition))] string expressionText = "")
     {
         _onlyWhen.Add(new TargetCondition(condition, expressionText));
+        return this;
+    }
+
+    public ITargetDefinition Requires(
+        Func<bool> condition,
+        [CallerArgumentExpression(nameof(condition))] string expressionText = "")
+    {
+        _requires.Add(new TargetCondition(condition, expressionText));
+        return this;
+    }
+
+    public ITargetDefinition AssuredAfterFailure()
+    {
+        _assuredAfterFailure = true;
         return this;
     }
 
@@ -328,6 +363,8 @@ internal sealed class TargetDefinition : ITargetDefinition
         TriggeredBy = _triggeredBy.ToArray(),
         OnFailureOf = _onFailureOf.ToArray(),
         OnlyWhenConditions = _onlyWhen.ToArray(),
+        Requirements = _requires.ToArray(),
+        AssuredAfterFailure = _assuredAfterFailure,
         Resources = _resources.ToArray(),
         RequiresNetwork = _requiresNetwork,
         RequiresDocker = _requiresDocker,
@@ -372,6 +409,8 @@ public sealed record TargetSpec
     public IReadOnlyList<string> TriggeredBy { get; init; } = Array.Empty<string>();
     public IReadOnlyList<string> OnFailureOf { get; init; } = Array.Empty<string>();
     public IReadOnlyList<TargetCondition> OnlyWhenConditions { get; init; } = Array.Empty<TargetCondition>();
+    public IReadOnlyList<TargetCondition> Requirements { get; init; } = Array.Empty<TargetCondition>();
+    public bool AssuredAfterFailure { get; init; }
     public IReadOnlyList<(Resource Resource, ConsumeMode Mode)> Resources { get; init; }
         = Array.Empty<(Resource, ConsumeMode)>();
     public bool RequiresNetwork { get; init; }

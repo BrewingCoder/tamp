@@ -1,3 +1,5 @@
+using System.Diagnostics;
+
 namespace Tamp;
 
 /// <summary>
@@ -6,16 +8,21 @@ namespace Tamp;
 /// but not yet honored here. (Filed in TAM-25 follow-ups.)
 /// </summary>
 /// <remarks>
-/// The executor honors <see cref="ITargetDefinition.OnlyWhen"/> conditions
-/// and <see cref="ITargetDefinition.OnFailureOf"/> failure handlers. When a
-/// target fails, the executor:
+/// The executor honors <see cref="ITargetDefinition.OnlyWhen"/> conditions,
+/// <see cref="ITargetDefinition.Requires"/> hard preconditions,
+/// <see cref="ITargetDefinition.AssuredAfterFailure"/> cleanup semantics,
+/// and <see cref="ITargetDefinition.OnFailureOf"/> failure handlers.
+///
+/// On a target failure, the executor:
 /// <list type="number">
 ///   <item>Records the failure (target name + exit code or exception).</item>
-///   <item>Looks up handlers via <see cref="TargetGraph.HandlersFor"/>.</item>
-///   <item>Builds a sub-plan for each handler (handler + its own deps) and
-///         runs it sequentially.</item>
+///   <item>Looks up handlers via <see cref="TargetGraph.HandlersFor"/> and
+///         runs each handler's full sub-tree (handler + its own deps).</item>
+///   <item>Continues iterating the main plan, but only runs targets that
+///         declared <see cref="ITargetDefinition.AssuredAfterFailure"/>;
+///         everything else is marked <see cref="TargetStatus.NotRun"/>.</item>
 ///   <item>Returns the original failure's exit code regardless of whether
-///         the handler succeeded — handlers do not reverse the failure.</item>
+///         handlers or assured-after-failure cleanups succeeded.</item>
 /// </list>
 /// </remarks>
 public sealed class Executor
@@ -78,6 +85,11 @@ public sealed class Executor
             if (spec.OnlyWhenConditions.Count > 0)
                 foreach (var c in spec.OnlyWhenConditions)
                     _redactedOutput.WriteLine($"    only when: {c.ExpressionText}");
+            if (spec.Requirements.Count > 0)
+                foreach (var c in spec.Requirements)
+                    _redactedOutput.WriteLine($"    requires: {c.ExpressionText}");
+            if (spec.AssuredAfterFailure)
+                _redactedOutput.WriteLine($"    assured-after-failure: yes");
             if (spec.RequiresNetwork || spec.RequiresDocker || spec.RequiresAdmin)
             {
                 var caps = new List<string>();
@@ -104,9 +116,6 @@ public sealed class Executor
                 _redactedOutput.WriteLine();
                 continue;
             }
-            // Pure-action targets without command plans are silent in dry-run
-            // — by definition there's no spawn to print. They'll still run in
-            // Run mode.
             foreach (var factory in spec.PlanFactories)
             {
                 foreach (var plan in factory())
@@ -123,58 +132,114 @@ public sealed class Executor
 
     private ExecutionResult RunActual(IReadOnlyList<TargetSpec> order)
     {
-        var traversed = 0;
+        var records = new List<TargetExecutionRecord>(order.Count);
         var skipped = new List<string>();
+        var handlersInvoked = new List<string>();
+        (string Name, int ExitCode)? buildFailedAt = null;
+        var buildSw = Stopwatch.StartNew();
+
         foreach (var spec in order)
         {
-            traversed++;
+            // After a failure, only AssuredAfterFailure targets keep running.
+            if (buildFailedAt.HasValue && !spec.AssuredAfterFailure)
+            {
+                _redactedOutput.WriteLine($"==> {spec.Name} (not run: build already failed)");
+                records.Add(TargetExecutionRecord.NotRun(spec.Name));
+                continue;
+            }
 
             if (CheckSkippedByCondition(spec) is { } skipReason)
             {
                 _redactedOutput.WriteLine($"==> {spec.Name} (skipped: {skipReason})");
                 skipped.Add(spec.Name);
+                records.Add(TargetExecutionRecord.Skipped(spec.Name, skipReason));
+                continue;
+            }
+
+            // Hard preconditions (Requires) — failure here aborts the build.
+            if (CheckRequirementsFailed(spec) is { } reqFail)
+            {
+                _redactedOutput.WriteLine($"==> {spec.Name} REQUIRES failed: {reqFail}");
+                records.Add(TargetExecutionRecord.Failed(spec.Name, TimeSpan.Zero, $"Requires failed: {reqFail}"));
+                if (!buildFailedAt.HasValue)
+                {
+                    buildFailedAt = (spec.Name, 1);
+                    handlersInvoked.AddRange(DispatchFailureHandlers(spec.Name));
+                }
                 continue;
             }
 
             _redactedOutput.WriteLine($"==> {spec.Name}");
-
-            // Capability preflight: fail fast on missing capabilities the
-            // target declared as required.
-            // TODO: invoke real preflight via HostProfile and tool-availability checks.
+            var sw = Stopwatch.StartNew();
 
             try
             {
                 foreach (var action in spec.Actions)
                     action();
 
+                var exit = 0;
                 foreach (var factory in spec.PlanFactories)
                 {
                     foreach (var plan in factory())
                     {
                         _redactionTable.RegisterAll(plan);
-                        var exit = ProcessRunner.Execute(plan, _redactedOutput, _redactedOutput);
+                        exit = ProcessRunner.Execute(plan, _redactedOutput, _redactedOutput);
                         if (exit != 0)
                         {
                             _redactedOutput.WriteLine($"==> {spec.Name} FAILED (exit {exit})");
                             if (spec.FailureMode == FailureMode.Continue) continue;
-                            return Fail(spec.Name, exit, traversed, skipped);
+                            sw.Stop();
+                            records.Add(TargetExecutionRecord.Failed(spec.Name, sw.Elapsed, $"exit {exit}"));
+                            if (!buildFailedAt.HasValue)
+                            {
+                                buildFailedAt = (spec.Name, exit);
+                                handlersInvoked.AddRange(DispatchFailureHandlers(spec.Name));
+                            }
+                            goto nextSpec;
                         }
                     }
                 }
+
+                sw.Stop();
+                records.Add(TargetExecutionRecord.Done(spec.Name, sw.Elapsed));
             }
             catch (Exception ex) when (spec.FailureMode == FailureMode.Continue)
             {
+                sw.Stop();
                 _redactedOutput.WriteLine($"==> {spec.Name} threw {ex.GetType().Name}; continuing per FailureMode.Continue: {ex.Message}");
+                records.Add(TargetExecutionRecord.Done(spec.Name, sw.Elapsed));
             }
             catch (Exception ex)
             {
+                sw.Stop();
                 _redactedOutput.WriteLine($"==> {spec.Name} threw {ex.GetType().Name}: {ex.Message}");
-                return Fail(spec.Name, exitCode: 1, traversed, skipped);
+                records.Add(TargetExecutionRecord.Failed(spec.Name, sw.Elapsed, ex.Message));
+                if (!buildFailedAt.HasValue)
+                {
+                    buildFailedAt = (spec.Name, 1);
+                    handlersInvoked.AddRange(DispatchFailureHandlers(spec.Name));
+                }
             }
+
+            nextSpec:;
         }
 
+        buildSw.Stop();
+        WriteBuildSummary(records, buildSw.Elapsed, buildFailedAt?.Name);
         _redactedOutput.Flush();
-        return new ExecutionResult { Mode = Mode, ExitCode = 0, TargetsTraversed = traversed, SkippedTargets = skipped };
+
+        var traversed = records.Count(r => r.Status is not TargetStatus.NotRun);
+        return new ExecutionResult
+        {
+            Mode = Mode,
+            ExitCode = buildFailedAt?.ExitCode ?? 0,
+            TargetsTraversed = traversed,
+            FailedTarget = buildFailedAt?.Name,
+            FailureHandlersInvoked = handlersInvoked,
+            SkippedTargets = skipped,
+            ExecutionRecords = records,
+            Duration = buildSw.Elapsed,
+        };
     }
 
     /// <summary>Returns the failure reason (for human display) when an OnlyWhen condition rejects a target; null otherwise.</summary>
@@ -190,74 +255,126 @@ public sealed class Executor
         return null;
     }
 
-    /// <summary>
-    /// Common failure path. Logs the failure, dispatches any registered
-    /// <see cref="ITargetDefinition.OnFailureOf"/> handlers (including their
-    /// own dep trees), and returns the ExecutionResult with the original
-    /// failure's exit code preserved.
-    /// </summary>
-    private ExecutionResult Fail(string failedTargetName, int exitCode, int traversed, IReadOnlyList<string> skipped)
+    /// <summary>Returns the failed expression text when a Requires precondition fails; null when all hold.</summary>
+    private static string? CheckRequirementsFailed(TargetSpec spec)
     {
-        var handlersInvoked = new List<string>();
-        try
+        foreach (var c in spec.Requirements)
         {
-            var handlers = Graph.HandlersFor(failedTargetName);
-            if (handlers.Count > 0)
+            bool result;
+            try { result = c.Predicate(); }
+            catch (Exception ex) { return $"{c.ExpressionText} threw {ex.GetType().Name}: {ex.Message}"; }
+            if (!result) return c.ExpressionText;
+        }
+        return null;
+    }
+
+    private IEnumerable<string> DispatchFailureHandlers(string failedTargetName)
+    {
+        var handlers = Graph.HandlersFor(failedTargetName);
+        if (handlers.Count == 0) yield break;
+
+        _redactedOutput.WriteLine();
+        _redactedOutput.WriteLine($"Running {handlers.Count} failure handler{(handlers.Count == 1 ? "" : "s")} for {failedTargetName}:");
+        foreach (var handler in handlers)
+        {
+            yield return handler.Name;
+            try
             {
-                _redactedOutput.WriteLine();
-                _redactedOutput.WriteLine($"Running {handlers.Count} failure handler{(handlers.Count == 1 ? "" : "s")} for {failedTargetName}:");
-            }
-            foreach (var handler in handlers)
-            {
-                handlersInvoked.Add(handler.Name);
-                try
+                var subOrder = Graph.ComputeExecutionOrder(handler.Name);
+                foreach (var sub in subOrder)
                 {
-                    var subOrder = Graph.ComputeExecutionOrder(handler.Name);
-                    foreach (var sub in subOrder)
+                    if (CheckSkippedByCondition(sub) is { } skip)
                     {
-                        if (CheckSkippedByCondition(sub) is { } skip)
+                        _redactedOutput.WriteLine($"==> {sub.Name} (skipped: {skip})");
+                        continue;
+                    }
+                    _redactedOutput.WriteLine($"==> {sub.Name} (failure handler for {failedTargetName})");
+                    foreach (var action in sub.Actions) action();
+                    foreach (var factory in sub.PlanFactories)
+                    {
+                        foreach (var plan in factory())
                         {
-                            _redactedOutput.WriteLine($"==> {sub.Name} (skipped: {skip})");
-                            continue;
-                        }
-                        _redactedOutput.WriteLine($"==> {sub.Name} (failure handler for {failedTargetName})");
-                        foreach (var action in sub.Actions) action();
-                        foreach (var factory in sub.PlanFactories)
-                        {
-                            foreach (var plan in factory())
+                            _redactionTable.RegisterAll(plan);
+                            var subExit = ProcessRunner.Execute(plan, _redactedOutput, _redactedOutput);
+                            if (subExit != 0)
                             {
-                                _redactionTable.RegisterAll(plan);
-                                var subExit = ProcessRunner.Execute(plan, _redactedOutput, _redactedOutput);
-                                if (subExit != 0)
-                                {
-                                    _redactedOutput.WriteLine($"==> {sub.Name} (handler) FAILED (exit {subExit}); original failure stands");
-                                    break;
-                                }
+                                _redactedOutput.WriteLine($"==> {sub.Name} (handler) FAILED (exit {subExit}); original failure stands");
+                                break;
                             }
                         }
                     }
                 }
-                catch (Exception hex)
-                {
-                    _redactedOutput.WriteLine($"==> {handler.Name} (handler) threw {hex.GetType().Name}: {hex.Message}; original failure stands");
-                }
+            }
+            catch (Exception hex)
+            {
+                _redactedOutput.WriteLine($"==> {handler.Name} (handler) threw {hex.GetType().Name}: {hex.Message}; original failure stands");
             }
         }
-        finally
+    }
+
+    private void WriteBuildSummary(IReadOnlyList<TargetExecutionRecord> records, TimeSpan duration, string? failedTargetName)
+    {
+        if (records.Count == 0) return;
+
+        _redactedOutput.WriteLine();
+        _redactedOutput.WriteLine("─── Build Summary ───");
+        var nameWidth = Math.Max("Target".Length, records.Max(r => r.Name.Length));
+        var statusWidth = Math.Max("Status".Length, records.Max(r => r.Status.ToString().Length));
+
+        _redactedOutput.WriteLine($"  {"Target".PadRight(nameWidth)}   {"Status".PadRight(statusWidth)}   Duration");
+        foreach (var r in records)
         {
-            _redactedOutput.Flush();
+            var statusGlyph = r.Status switch
+            {
+                TargetStatus.Done => "✓",
+                TargetStatus.Failed => "✗",
+                TargetStatus.Skipped => "·",
+                TargetStatus.NotRun => "—",
+                _ => "?",
+            };
+            var status = $"{statusGlyph} {r.Status}";
+            var durationText = r.Status is TargetStatus.Skipped or TargetStatus.NotRun
+                ? string.Empty
+                : FormatDuration(r.Duration);
+            _redactedOutput.WriteLine($"  {r.Name.PadRight(nameWidth)}   {status.PadRight(statusWidth + 2)}   {durationText}");
         }
-        return new ExecutionResult
+        _redactedOutput.WriteLine($"  {"".PadRight(nameWidth)}   {"".PadRight(statusWidth + 2)}   ─────");
+        _redactedOutput.WriteLine($"  {"Total".PadRight(nameWidth)}   {"".PadRight(statusWidth + 2)}   {FormatDuration(duration)}");
+
+        if (failedTargetName is not null)
         {
-            Mode = Mode,
-            ExitCode = exitCode,
-            TargetsTraversed = traversed,
-            FailedTarget = failedTargetName,
-            FailureHandlersInvoked = handlersInvoked,
-            SkippedTargets = skipped,
-        };
+            _redactedOutput.WriteLine();
+            _redactedOutput.WriteLine($"BUILD FAILED — first failed target: {failedTargetName}");
+        }
+    }
+
+    private static string FormatDuration(TimeSpan d)
+    {
+        if (d.TotalMilliseconds < 1000) return $"{d.TotalMilliseconds:F0} ms";
+        if (d.TotalSeconds < 60) return $"{d.TotalSeconds:F1} s";
+        return $"{(int)d.TotalMinutes}m {d.Seconds}s";
     }
 }
+
+/// <summary>Per-target outcome inside a build run.</summary>
+public sealed record TargetExecutionRecord
+{
+    public required string Name { get; init; }
+    public required TargetStatus Status { get; init; }
+    public TimeSpan Duration { get; init; }
+    public string? FailureReason { get; init; }
+
+    public static TargetExecutionRecord Done(string name, TimeSpan duration)
+        => new() { Name = name, Status = TargetStatus.Done, Duration = duration };
+    public static TargetExecutionRecord Failed(string name, TimeSpan duration, string reason)
+        => new() { Name = name, Status = TargetStatus.Failed, Duration = duration, FailureReason = reason };
+    public static TargetExecutionRecord Skipped(string name, string reason)
+        => new() { Name = name, Status = TargetStatus.Skipped, FailureReason = reason };
+    public static TargetExecutionRecord NotRun(string name)
+        => new() { Name = name, Status = TargetStatus.NotRun };
+}
+
+public enum TargetStatus { Done, Failed, Skipped, NotRun }
 
 /// <summary>Outcome of a single executor run.</summary>
 public sealed record ExecutionResult
@@ -269,4 +386,7 @@ public sealed record ExecutionResult
     public string? FailedTarget { get; init; }
     public IReadOnlyList<string> FailureHandlersInvoked { get; init; } = Array.Empty<string>();
     public IReadOnlyList<string> SkippedTargets { get; init; } = Array.Empty<string>();
+    public IReadOnlyList<TargetExecutionRecord> ExecutionRecords { get; init; } = Array.Empty<TargetExecutionRecord>();
+    public TimeSpan Duration { get; init; }
 }
+
