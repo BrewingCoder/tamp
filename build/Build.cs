@@ -77,18 +77,27 @@ class Build : TampBuild
     Target Test => _ => _
         .TopLevel()
         .DependsOn(nameof(Compile))
-        .Description("Run the test suite across all TFMs with --collect 'Code Coverage' for portable coverage.")
-        // dotnet test --collect goes through the vstest data-collector plumbing,
-        // which works on Linux, Windows, and macOS arm64. dotnet-coverage's
-        // standalone `collect` verb relies on CORECLR_PROFILER env vars that
-        // macOS Hardened Runtime strips when dotnet test spawns the testhost,
-        // so the profiler never attaches and the coverage file is empty.
+        .Description("Run the test suite across all TFMs with two coverage collectors stacked.")
+        // Two collectors:
+        //  - "Code Coverage"      → dotnet-coverage / vstest data collector path.
+        //                            Emits .coverage binary → cobertura via Merge.
+        //                            Works on macOS arm64 (the standalone
+        //                            dotnet-coverage collect verb does not —
+        //                            Hardened Runtime strips CORECLR_PROFILER).
+        //  - "XPlat Code Coverage" → Coverlet collector. Configured via
+        //                            build/coverlet.runsettings to emit
+        //                            OpenCover XML, which Sonar's .NET path
+        //                            (sonar.cs.opencover.reportsPaths) wants.
+        // Both produce report files under CoverageDir; SonarBegin reads the
+        // .opencover.xml files; Coverage target merges the .coverage files.
         .Executes(() => DotNet.Test(s => s
             .SetProject(Solution.Path)
             .SetConfiguration(Configuration)
             .SetNoBuild(true)
             .AddLogger("trx;LogFileName=test-results.trx")
             .AddDataCollector("Code Coverage")
+            .AddDataCollector("XPlat Code Coverage")
+            .SetSettings((RootDirectory / "build" / "coverlet.runsettings").Value)
             .SetResultsDirectory(CoverageDir)));
 
     Target Coverage => _ => _
@@ -144,10 +153,12 @@ class Build : TampBuild
             .SetHostUrl(SonarHostUrl)
             .SetToken(SonarToken!)
             .SetProperty("sonar.cs.vstest.reportsPaths", $"{CoverageDir.Value}/**/*.trx")
-            // Coverage attachment deferred (TAM-80) — sonar.coverageReportPaths
-            // expects Sonar's generic XML schema, not cobertura. The .NET path
-            // is OpenCover (via Coverlet) → sonar.cs.opencover.reportsPaths.
+            // Coverage via Coverlet → OpenCover XML (TAM-80). Glob picks up
+            // one file per test project (lands at <results>/<guid>/coverage.opencover.xml).
+            .SetProperty("sonar.cs.opencover.reportsPaths", $"{CoverageDir.Value}/**/coverage.opencover.xml")
             .SetProperty("sonar.exclusions", "**/bin/**,**/obj/**,artifacts/**,build/**,docs/**")
+            // Coverage shouldn't count test code or build script:
+            .SetProperty("sonar.coverage.exclusions", "tests/**,build/**,samples/**")
             // Tamp.NetCli.V8 / V9 are intentional sibling copies of V10 per
             // ADR 0002 — drop them from copy-paste detection so duplication
             // metrics reflect accidental dup, not the by-design pattern (TAM-82).

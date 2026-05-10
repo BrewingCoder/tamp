@@ -1,0 +1,27 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  Coverlet data collector config. Used by `dotnet test
+  - -collect "XPlat Code Coverage" - -settings build/coverlet.runsettings`.
+  Format=opencover so Sonar's sonar.cs.opencover.reportsPaths can ingest it
+  (Coverlet's default is cobertura; this block flips it).
+  ExcludeByAttribute skips GeneratedCode + ExcludeFromCodeCoverage members.
+-->
+<RunSettings>
+  <DataCollectionRunSettings>
+    <DataCollectors>
+      <DataCollector friendlyName="XPlat Code Coverage">
+        <Configuration>
+          <Format>opencover</Format>
+          <ExcludeByAttribute>Obsolete,GeneratedCodeAttribute,CompilerGeneratedAttribute,ExcludeFromCodeCoverageAttribute</ExcludeByAttribute>
+          <SingleHit>false</SingleHit>
+          <!--
+            UseSourceLink=true emits raw.githubusercontent.com URLs as
+            file paths. Sonar can't correlate URLs to working-dir files
+            so coverage shows 0%. Keep local paths.
+          -->
+          <UseSourceLink>false</UseSourceLink>
+        </Configuration>
+      </DataCollector>
+    </DataCollectors>
+  </DataCollectionRunSettings>
+</RunSettings>
