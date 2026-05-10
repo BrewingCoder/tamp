@@ -54,8 +54,33 @@ public abstract class TampBuild
     /// </summary>
     public static AbsolutePath TemporaryDirectory => (RootDirectory / ".tamp" / "temp").EnsureDirectoryExists();
 
+    private static CiHost? _ciHostCache;
+    private static bool _ciHostResolved;
+
+    /// <summary>
+    /// The active CI host (GitHub Actions, Azure DevOps, TeamCity, …) when
+    /// running under a recognised CI environment, or null otherwise.
+    /// Cached after first access; build scripts on a developer machine see
+    /// null and can branch on that.
+    /// </summary>
+    public static CiHost? CiHost
+    {
+        get
+        {
+            if (_ciHostResolved) return _ciHostCache;
+            _ciHostCache = Tamp.CiHost.Detect();
+            _ciHostResolved = true;
+            return _ciHostCache;
+        }
+    }
+
     /// <summary>Reset the cached <see cref="RootDirectory"/>. Test-only.</summary>
-    internal static void ResetCachedDirectories() => _rootDirectoryCache = null;
+    internal static void ResetCachedDirectories()
+    {
+        _rootDirectoryCache = null;
+        _ciHostCache = null;
+        _ciHostResolved = false;
+    }
 
     private static string? LocateRootDirectory(string startDirectory)
     {

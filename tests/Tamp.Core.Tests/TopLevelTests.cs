@@ -49,7 +49,7 @@ public sealed class TopLevelTests
     private sealed class InvokeInternalBuild : TampBuild
     {
         public static int RestoreCount;
-        public Target Ci => _ => _.TopLevel().DependsOn(nameof(Restore));
+        public Target Pipeline => _ => _.TopLevel().DependsOn(nameof(Restore));
         public Target Restore => _ => _.Executes(() => RestoreCount++);
     }
 
