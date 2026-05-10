@@ -59,4 +59,40 @@ public static class DotNet
         configure(s);
         return s.ToCommandPlan();
     }
+
+    /// <summary>
+    /// <c>dotnet format</c> — runs whitespace + style + analyzer fixes.
+    /// Pair with <c>SetVerifyNoChanges(true)</c> in CI to fail the build
+    /// when the tree is out of compliance.
+    /// </summary>
+    public static CommandPlan Format(Action<DotNetFormatSettings>? configure = null)
+    {
+        var s = new DotNetFormatSettings();
+        configure?.Invoke(s);
+        return s.ToCommandPlan();
+    }
+
+    /// <summary><c>dotnet format whitespace</c> — whitespace-only fixes (the cheapest CI gate).</summary>
+    public static CommandPlan FormatWhitespace(Action<DotNetFormatWhitespaceSettings>? configure = null)
+    {
+        var s = new DotNetFormatWhitespaceSettings();
+        configure?.Invoke(s);
+        return s.ToCommandPlan();
+    }
+
+    /// <summary><c>dotnet format style</c> — code-style analyzer fixes only.</summary>
+    public static CommandPlan FormatStyle(Action<DotNetFormatStyleSettings>? configure = null)
+    {
+        var s = new DotNetFormatStyleSettings();
+        configure?.Invoke(s);
+        return s.ToCommandPlan();
+    }
+
+    /// <summary><c>dotnet format analyzers</c> — third-party analyzer fixes only.</summary>
+    public static CommandPlan FormatAnalyzers(Action<DotNetFormatAnalyzersSettings>? configure = null)
+    {
+        var s = new DotNetFormatAnalyzersSettings();
+        configure?.Invoke(s);
+        return s.ToCommandPlan();
+    }
 }

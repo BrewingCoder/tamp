@@ -399,4 +399,160 @@ public sealed class DotNetTests
         Assert.Equal(["nuget", "push", "a.nupkg"], plan.Arguments);
         Assert.Empty(plan.Secrets);
     }
+
+    // ---- format ----
+
+    [Fact]
+    public void Format_Bare_Emits_Just_The_Verb()
+    {
+        var args = DotNet.Format().Arguments;
+        Assert.Equal("format", args[0]);
+        Assert.Single(args);
+    }
+
+    [Fact]
+    public void Format_Project_Is_Positional_After_Verb()
+    {
+        var args = DotNet.Format(s => s.SetProject("./MySolution.sln")).Arguments;
+        Assert.Equal("format", args[0]);
+        Assert.Equal("./MySolution.sln", args[1]);
+    }
+
+    [Fact]
+    public void Format_VerifyNoChanges_Is_The_CI_Gate_Flag()
+    {
+        var args = DotNet.Format(s => s.SetVerifyNoChanges()).Arguments;
+        Assert.Contains("--verify-no-changes", args);
+    }
+
+    [Fact]
+    public void Format_NoRestore_Round_Trips()
+    {
+        var args = DotNet.Format(s => s.SetNoRestore()).Arguments;
+        Assert.Contains("--no-restore", args);
+    }
+
+    [Fact]
+    public void Format_Include_And_Exclude_Are_Space_Joined()
+    {
+        var args = DotNet.Format(s => s
+            .AddInclude("src/")
+            .AddInclude("tests/")
+            .AddExclude("**/*.Designer.cs")
+            .AddExclude("**/Migrations/")).Arguments;
+        Assert.Equal("src/ tests/", args[IndexOf(args, "--include") + 1]);
+        Assert.Equal("**/*.Designer.cs **/Migrations/", args[IndexOf(args, "--exclude") + 1]);
+    }
+
+    [Fact]
+    public void Format_IncludeGenerated_Round_Trips()
+    {
+        var args = DotNet.Format(s => s.SetIncludeGenerated()).Arguments;
+        Assert.Contains("--include-generated", args);
+    }
+
+    [Fact]
+    public void Format_BinaryLog_And_Report_Round_Trip()
+    {
+        var args = DotNet.Format(s => s.SetBinaryLog("/tmp/format.binlog").SetReport("/tmp/format-report")).Arguments;
+        Assert.Equal("/tmp/format.binlog", args[IndexOf(args, "--binarylog") + 1]);
+        Assert.Equal("/tmp/format-report", args[IndexOf(args, "--report") + 1]);
+    }
+
+    [Theory]
+    [InlineData(DotNetFormatSeverity.Info, "info")]
+    [InlineData(DotNetFormatSeverity.Warn, "warn")]
+    [InlineData(DotNetFormatSeverity.Error, "error")]
+    public void Format_Severity_Maps_To_Lowercase_Token(DotNetFormatSeverity severity, string expected)
+    {
+        var args = DotNet.Format(s => s.SetSeverity(severity)).Arguments;
+        Assert.Equal(expected, args[IndexOf(args, "--severity") + 1]);
+    }
+
+    [Fact]
+    public void Format_Diagnostics_And_ExcludeDiagnostics_Are_Space_Joined()
+    {
+        var args = DotNet.Format(s => s
+            .AddDiagnosticId("IDE0005")
+            .AddDiagnosticId("IDE0044")
+            .AddExcludeDiagnosticId("CA1822")).Arguments;
+        Assert.Equal("IDE0005 IDE0044", args[IndexOf(args, "--diagnostics") + 1]);
+        Assert.Equal("CA1822", args[IndexOf(args, "--exclude-diagnostics") + 1]);
+    }
+
+    [Fact]
+    public void FormatWhitespace_Verb_Tokens_Are_Format_Whitespace()
+    {
+        var args = DotNet.FormatWhitespace().Arguments;
+        Assert.Equal("format", args[0]);
+        Assert.Equal("whitespace", args[1]);
+    }
+
+    [Fact]
+    public void FormatWhitespace_Folder_Round_Trips()
+    {
+        var args = DotNet.FormatWhitespace(s => s.SetFolder()).Arguments;
+        Assert.Contains("--folder", args);
+    }
+
+    [Fact]
+    public void FormatWhitespace_Has_No_Diagnostics_Setters()
+    {
+        // Surface-policing: dotnet format whitespace does NOT accept
+        // --severity / --diagnostics / --exclude-diagnostics. The
+        // wrapper must not expose them.
+        var setters = typeof(DotNetFormatWhitespaceSettings)
+            .GetMethods()
+            .Where(m => m.Name.StartsWith("Set"))
+            .Select(m => m.Name)
+            .ToHashSet();
+        Assert.DoesNotContain("SetSeverity", setters);
+        var addMethods = typeof(DotNetFormatWhitespaceSettings)
+            .GetMethods()
+            .Where(m => m.Name.StartsWith("Add"))
+            .Select(m => m.Name)
+            .ToHashSet();
+        Assert.DoesNotContain("AddDiagnosticId", addMethods);
+        Assert.DoesNotContain("AddExcludeDiagnosticId", addMethods);
+    }
+
+    [Fact]
+    public void FormatStyle_Verb_Tokens_Are_Format_Style()
+    {
+        var args = DotNet.FormatStyle().Arguments;
+        Assert.Equal("format", args[0]);
+        Assert.Equal("style", args[1]);
+    }
+
+    [Fact]
+    public void FormatStyle_Severity_Round_Trips()
+    {
+        var args = DotNet.FormatStyle(s => s.SetSeverity(DotNetFormatSeverity.Warn)).Arguments;
+        Assert.Equal("warn", args[IndexOf(args, "--severity") + 1]);
+    }
+
+    [Fact]
+    public void FormatAnalyzers_Verb_Tokens_Are_Format_Analyzers()
+    {
+        var args = DotNet.FormatAnalyzers().Arguments;
+        Assert.Equal("format", args[0]);
+        Assert.Equal("analyzers", args[1]);
+    }
+
+    [Fact]
+    public void FormatAnalyzers_VerifyNoChanges_And_Severity_Round_Trip()
+    {
+        var args = DotNet.FormatAnalyzers(s => s
+            .SetVerifyNoChanges()
+            .SetSeverity(DotNetFormatSeverity.Error)).Arguments;
+        Assert.Contains("--verify-no-changes", args);
+        Assert.Equal("error", args[IndexOf(args, "--severity") + 1]);
+    }
+
+    [Fact]
+    public void Format_Verbosity_Round_Trips_Via_DotNetSettingsBase()
+    {
+        var args = DotNet.Format(s => s.SetVerbosity(DotNetVerbosity.Diagnostic)).Arguments;
+        Assert.Equal("diagnostic", args[IndexOf(args, "--verbosity") + 1]);
+    }
 }
