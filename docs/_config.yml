@@ -1,0 +1,18 @@
+# GitHub Pages config. The site renders the markdown under /docs as a
+# Jekyll site at https://tamp-build.github.io/tamp/. The ADR directory
+# under /docs/adr renders alongside, so wiki pages aside, all the
+# repo's authored docs are reachable from the same site root.
+
+title: Tamp
+description: Pack the build down tight. A small-core, plugin-driven build automation framework for .NET.
+theme: jekyll-theme-cayman
+url: "https://tamp-build.github.io"
+baseurl: "/tamp"
+
+show_downloads: false
+github:
+  repository_url: https://github.com/tamp-build/tamp
+
+# Don't render these as standalone pages — they're internal references.
+exclude:
+  - README.md   # the wiki Home is canonical; the repo README is for repo readers
