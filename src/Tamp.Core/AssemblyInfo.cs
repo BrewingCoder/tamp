@@ -9,3 +9,6 @@ using System.Runtime.CompilerServices;
 [assembly: InternalsVisibleTo("Tamp.SonarScanner.V10")]
 [assembly: InternalsVisibleTo("Tamp.SonarScannerCli.V6")]
 [assembly: InternalsVisibleTo("Tamp.DotNetCoverage.V18")]
+[assembly: InternalsVisibleTo("Tamp.EFCore.V8")]
+[assembly: InternalsVisibleTo("Tamp.EFCore.V9")]
+[assembly: InternalsVisibleTo("Tamp.EFCore.V10")]
