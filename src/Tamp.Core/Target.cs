@@ -33,6 +33,20 @@ public interface ITargetDefinition
     ITargetDefinition Description(string description);
     ITargetDefinition Tag(params string[] tags);
 
+    /// <summary>
+    /// Marks the target as a top-level entry point — the kind of thing
+    /// users invoke directly. Surfaces in <c>--list</c> and IDE runner
+    /// menus. Internal helper targets (left unmarked) stay invocable by
+    /// name but are hidden from default listings to keep the menu signal-
+    /// to-noise high.
+    /// </summary>
+    /// <remarks>
+    /// If no targets are marked, every target appears in listings — the
+    /// marker is opt-in, so existing builds continue to surface their
+    /// full target list unchanged.
+    /// </remarks>
+    ITargetDefinition TopLevel();
+
     // Dependencies (by target name; nameof(OtherTarget) is the recommended idiom)
     ITargetDefinition DependsOn(params string[] targetNames);
 
@@ -140,6 +154,7 @@ internal sealed class TargetDefinition : ITargetDefinition
     private Phase _phase;
     private PhaseDescriptor? _phaseDescriptor;
     private string? _description;
+    private bool _topLevel;
     private bool _requiresNetwork;
     private bool _requiresDocker;
     private bool _requiresAdmin;
@@ -175,6 +190,12 @@ internal sealed class TargetDefinition : ITargetDefinition
     public ITargetDefinition Tag(params string[] tags)
     {
         _tags.AddRange(tags);
+        return this;
+    }
+
+    public ITargetDefinition TopLevel()
+    {
+        _topLevel = true;
         return this;
     }
 
@@ -298,6 +319,7 @@ internal sealed class TargetDefinition : ITargetDefinition
         Phase = _phase,
         PhaseDescriptor = _phaseDescriptor,
         Description = _description,
+        TopLevel = _topLevel,
         Tags = _tags.ToArray(),
         Dependencies = _dependencies.ToArray(),
         OrderAfter = _orderAfter.ToArray(),
@@ -341,6 +363,7 @@ public sealed record TargetSpec
     public Phase Phase { get; init; }
     public PhaseDescriptor? PhaseDescriptor { get; init; }
     public string? Description { get; init; }
+    public bool TopLevel { get; init; }
     public IReadOnlyList<string> Tags { get; init; } = Array.Empty<string>();
     public IReadOnlyList<string> Dependencies { get; init; } = Array.Empty<string>();
     public IReadOnlyList<string> OrderAfter { get; init; } = Array.Empty<string>();

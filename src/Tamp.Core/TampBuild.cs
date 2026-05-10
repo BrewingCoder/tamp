@@ -42,16 +42,16 @@ public abstract class TampBuild
             var targets = CollectTargets(build);
             var graph = new TargetGraph(targets);
 
-            var (mode, targetNames, listMode) = ParseInvocation(args, targets);
+            var (mode, targetNames, listMode, showAll) = ParseInvocation(args, targets);
 
             if (listMode is ListMode.Flat)
             {
-                PrintTargetList(targets, tree: false);
+                PrintTargetList(targets, tree: false, showAll);
                 return 0;
             }
             if (listMode is ListMode.Tree)
             {
-                PrintTargetList(targets, tree: true);
+                PrintTargetList(targets, tree: true, showAll);
                 return 0;
             }
 
@@ -80,11 +80,12 @@ public abstract class TampBuild
     /// given, the build defaults to a target literally named <c>Default</c>
     /// or <c>Ci</c> if present.
     /// </remarks>
-    internal static (ExecutionMode, IReadOnlyList<string>, ListMode) ParseInvocation(
+    internal static (ExecutionMode, IReadOnlyList<string>, ListMode, bool ShowAll) ParseInvocation(
         string[] args, IReadOnlyDictionary<string, TargetSpec> targets)
     {
         var mode = ExecutionMode.Run;
         var listMode = ListMode.None;
+        var showAll = false;
         var targetNames = new List<string>();
         var skipNextValue = false;
 
@@ -106,6 +107,7 @@ public abstract class TampBuild
                     case "plan": mode = ExecutionMode.Plan; break;
                     case "list": listMode = ListMode.Flat; break;
                     case "list-tree": listMode = ListMode.Tree; break;
+                    case "all": showAll = true; break;
                     default:
                         // Unknown flag is a parameter binding handled by
                         // ParameterBinder. If the next arg is a value (not
@@ -127,25 +129,52 @@ public abstract class TampBuild
             else if (targets.ContainsKey("Ci")) targetNames.Add("Ci");
         }
 
-        return (mode, targetNames, listMode);
+        return (mode, targetNames, listMode, showAll);
     }
 
-    private static void PrintTargetList(IReadOnlyDictionary<string, TargetSpec> targets, bool tree)
+    private static void PrintTargetList(IReadOnlyDictionary<string, TargetSpec> targets, bool tree, bool showAll)
     {
         if (targets.Count == 0)
         {
             Console.WriteLine("(no targets defined)");
             return;
         }
-        var sorted = targets.Values.OrderBy(t => t.Name, StringComparer.Ordinal).ToList();
+
+        // If any target is marked TopLevel, the default listing is just
+        // those — pass --all to see everything. If none are marked, every
+        // target appears (no breaking change for builds that haven't
+        // adopted the marker).
+        var hasTopLevel = targets.Values.Any(t => t.TopLevel);
+        var visible = (hasTopLevel && !showAll)
+            ? targets.Values.Where(t => t.TopLevel)
+            : targets.Values;
+
+        var sorted = visible.OrderBy(t => t.Name, StringComparer.Ordinal).ToList();
+        if (sorted.Count == 0)
+        {
+            Console.WriteLine("(no top-level targets; pass --all to see internals)");
+            return;
+        }
+
         foreach (var t in sorted)
         {
             var phase = t.Phase == Phase.None ? string.Empty : $" [{t.Phase}]";
             var desc = string.IsNullOrEmpty(t.Description) ? string.Empty : $"  — {t.Description}";
-            Console.WriteLine($"{t.Name}{phase}{desc}");
+            var marker = (showAll && hasTopLevel && !t.TopLevel) ? " (internal)" : string.Empty;
+            Console.WriteLine($"{t.Name}{phase}{marker}{desc}");
             if (tree && t.Dependencies.Count > 0)
                 foreach (var dep in t.Dependencies)
                     Console.WriteLine($"    depends on: {dep}");
+        }
+
+        if (hasTopLevel && !showAll)
+        {
+            var hidden = targets.Values.Count(t => !t.TopLevel);
+            if (hidden > 0)
+            {
+                Console.WriteLine();
+                Console.WriteLine($"({hidden} internal target{(hidden == 1 ? "" : "s")} hidden; pass --all to show)");
+            }
         }
     }
 
