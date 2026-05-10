@@ -98,6 +98,95 @@ public abstract class TampBuild
         return null;
     }
 
+    /// <summary>
+    /// Print the framework banner (ASCII logo + version + URL) plus a
+    /// host-info panel (OS, arch, CPU/memory, runtime, CI vendor, cgroup).
+    /// Always shown, regardless of verbosity — useful for after-the-fact
+    /// debugging of runner-specific build issues where the runner config
+    /// isn't otherwise visible in the log.
+    /// </summary>
+    public static void PrintBanner(TextWriter writer)
+    {
+        // Prefer the InformationalVersion (carries pre-release suffixes like
+        // "0.0.1-alpha") over Assembly.Version (which is a 3-part numeric
+        // and drops everything after the patch).
+        var asm = typeof(TampBuild).Assembly;
+        var infoVersion = asm.GetCustomAttribute<System.Reflection.AssemblyInformationalVersionAttribute>()?.InformationalVersion;
+        // SourceLink appends "+<commit>" to InformationalVersion; trim that
+        // for display since the host panel below shows commit info already.
+        if (infoVersion is not null)
+        {
+            var plus = infoVersion.IndexOf('+');
+            if (plus > 0) infoVersion = infoVersion[..plus];
+        }
+        var version = infoVersion ?? asm.GetName().Version?.ToString(3) ?? "0.0.0";
+        writer.WriteLine();
+        writer.WriteLine(@"  ████████╗ █████╗ ███╗   ███╗██████╗ ");
+        writer.WriteLine(@"  ╚══██╔══╝██╔══██╗████╗ ████║██╔══██╗");
+        writer.WriteLine(@"     ██║   ███████║██╔████╔██║██████╔╝");
+        writer.WriteLine(@"     ██║   ██╔══██║██║╚██╔╝██║██╔═══╝ ");
+        writer.WriteLine(@"     ██║   ██║  ██║██║ ╚═╝ ██║██║     ");
+        writer.WriteLine(@"     ╚═╝   ╚═╝  ╚═╝╚═╝     ╚═╝╚═╝     ");
+        writer.WriteLine();
+        writer.WriteLine($"  Tamp {version}  ·  https://github.com/tamp-build/tamp");
+        writer.WriteLine();
+
+        var host = HostProfileBuilder.Build();
+        var ci = Tamp.CiHost.Detect();
+
+        var os = host.Os switch
+        {
+            OSFamily.Windows => "Windows",
+            OSFamily.Linux => host.InWsl ? "Linux (WSL)" : "Linux",
+            OSFamily.MacOs => "macOS",
+            _ => "Unknown",
+        };
+        var arch = host.Arch switch
+        {
+            System.Runtime.InteropServices.Architecture.X64 => "x64",
+            System.Runtime.InteropServices.Architecture.Arm64 => "arm64",
+            System.Runtime.InteropServices.Architecture.X86 => "x86",
+            _ => host.Arch.ToString().ToLowerInvariant(),
+        };
+        var totalGb = host.TotalMemoryBytes / 1024.0 / 1024.0 / 1024.0;
+        var freeGb = host.AvailableMemoryBytes / 1024.0 / 1024.0 / 1024.0;
+        var runtime = $".NET {Environment.Version}";
+        var runner = ci is not null
+            ? FormatCiVendor(ci.Vendor)
+            : (host.InContainer ? "container (local)" : "local");
+
+        writer.WriteLine($"  Host:     {os} {arch}  ·  {host.LogicalCpuCount} core{(host.LogicalCpuCount == 1 ? "" : "s")}  ·  {totalGb:F1} GB total / {freeGb:F1} GB free");
+        writer.WriteLine($"  Runtime:  {runtime}  ·  Runner: {runner}");
+
+        if (host.Cgroup is { } cg)
+        {
+            var memLimit = cg.MemoryLimitBytes is { } mb
+                ? $"{mb / 1024.0 / 1024.0 / 1024.0:F1} GB memory limit"
+                : "no memory limit";
+            var cpuQuota = cg.CpuQuota is { } cq
+                ? $"{cq:F2} cpu quota"
+                : "no cpu quota";
+            writer.WriteLine($"  Cgroup:   v{cg.Version}  ·  {cpuQuota}  ·  {memLimit}");
+        }
+
+        writer.WriteLine();
+    }
+
+    private static string FormatCiVendor(CiVendor v) => v switch
+    {
+        CiVendor.GitHubActions => "GitHub Actions",
+        CiVendor.AzureDevOps => "Azure DevOps",
+        CiVendor.GitLabCi => "GitLab CI",
+        CiVendor.AppVeyor => "AppVeyor",
+        CiVendor.TeamCity => "TeamCity",
+        CiVendor.Jenkins => "Jenkins",
+        CiVendor.CircleCI => "CircleCI",
+        CiVendor.Buildkite => "Buildkite",
+        CiVendor.Travis => "Travis CI",
+        CiVendor.Unknown => "CI (vendor unknown)",
+        _ => "local",
+    };
+
     /// <summary>Top-level build entry point. Pass <c>args</c> from <c>Main</c>.</summary>
     public static int Execute<T>(string[] args) where T : TampBuild, new()
     {
@@ -132,6 +221,8 @@ public abstract class TampBuild
                 Console.Error.WriteLine("Use `--list` to see available targets.");
                 return 2;
             }
+
+            PrintBanner(Console.Out);
 
             var executor = new Executor(graph, mode, output: null, verbosity);
             return executor.Run(targetNames.ToArray()).ExitCode;
