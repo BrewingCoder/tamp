@@ -27,6 +27,52 @@ public abstract class TampBuild
     /// </summary>
     protected static bool IsServerBuild => !IsLocalBuild;
 
+    private static AbsolutePath? _rootDirectoryCache;
+
+    /// <summary>
+    /// The root of the consumer's repository. Computed by walking up from
+    /// the build assembly's location and stopping at the first directory
+    /// containing any of: <c>.git</c>, a <c>.slnx</c> or <c>.sln</c> file,
+    /// or a <c>.tamp</c> subdirectory. Cached after first access.
+    /// </summary>
+    public static AbsolutePath RootDirectory
+    {
+        get
+        {
+            if (_rootDirectoryCache is not null) return _rootDirectoryCache;
+            var found = LocateRootDirectory(AppContext.BaseDirectory);
+            if (found is null)
+                throw new InvalidOperationException(
+                    $"Could not locate repository root — no .git, .slnx/.sln, or .tamp directory found above '{AppContext.BaseDirectory}'.");
+            return _rootDirectoryCache = AbsolutePath.Create(found);
+        }
+    }
+
+    /// <summary>
+    /// Tamp's per-build scratch directory. Lives at
+    /// <c>RootDirectory / ".tamp" / "temp"</c>; created on first access.
+    /// </summary>
+    public static AbsolutePath TemporaryDirectory => (RootDirectory / ".tamp" / "temp").EnsureDirectoryExists();
+
+    /// <summary>Reset the cached <see cref="RootDirectory"/>. Test-only.</summary>
+    internal static void ResetCachedDirectories() => _rootDirectoryCache = null;
+
+    private static string? LocateRootDirectory(string startDirectory)
+    {
+        var current = new DirectoryInfo(startDirectory);
+        while (current is not null)
+        {
+            if (Directory.Exists(Path.Combine(current.FullName, ".git"))) return current.FullName;
+            if (Directory.Exists(Path.Combine(current.FullName, ".tamp"))) return current.FullName;
+            if (Directory.GetFiles(current.FullName, "*.slnx", SearchOption.TopDirectoryOnly).Length > 0)
+                return current.FullName;
+            if (Directory.GetFiles(current.FullName, "*.sln", SearchOption.TopDirectoryOnly).Length > 0)
+                return current.FullName;
+            current = current.Parent;
+        }
+        return null;
+    }
+
     /// <summary>Top-level build entry point. Pass <c>args</c> from <c>Main</c>.</summary>
     public static int Execute<T>(string[] args) where T : TampBuild, new()
     {

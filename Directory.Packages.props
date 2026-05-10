@@ -17,4 +17,8 @@
     <PackageVersion Include="Microsoft.SourceLink.GitHub" Version="8.0.0" />
   </ItemGroup>
 
+  <ItemGroup Label="Core dependencies">
+    <PackageVersion Include="Microsoft.Extensions.FileSystemGlobbing" Version="9.0.0" />
+  </ItemGroup>
+
 </Project>
