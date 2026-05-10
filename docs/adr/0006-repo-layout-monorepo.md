@@ -23,7 +23,7 @@ The decision must reconcile two pressures that pull in opposite directions:
 * **One CI pipeline.** Build, test, and pack run together; cross-cutting refactors are caught immediately rather than discovered three weeks later when a downstream module rebuilds.
 * **Independent NuGet versions are still required.** The decision affects *source layout*, not *publication coupling*. Per-project versioning is a tooling concern, not a repo-boundary one.
 * **Forkability.** Anyone forking Tamp must get a working development environment from the single repo. The architecture must not depend on a private mesh of inter-repo links.
-* **Community modules are explicitly out of scope here.** Third-party modules live in third-party repos. This ADR is only about first-party (`BrewingCoder/tamp`-published) source.
+* **Community modules are explicitly out of scope here.** Third-party modules live in third-party repos. This ADR is only about first-party (`tamp-build/tamp`-published) source.
 
 ## Considered Options
 
@@ -34,7 +34,7 @@ The decision must reconcile two pressures that pull in opposite directions:
 
 ## Decision Outcome
 
-**Chosen: Option 3 — single repository (`BrewingCoder/tamp`) containing core, CLI, all first-party module sources, and tests, organised under one `Tamp.slnx`. Each project publishes its own NuGet package on its own version cadence.**
+**Chosen: Option 3 — single repository (`tamp-build/tamp`) containing core, CLI, all first-party module sources, and tests, organised under one `Tamp.slnx`. Each project publishes its own NuGet package on its own version cadence.**
 
 Layout:
 

@@ -30,7 +30,7 @@ dotnet --list-sdks
 Then:
 
 ```bash
-git clone git@github.com:BrewingCoder/tamp.git
+git clone git@github.com:tamp-build/tamp.git
 cd tamp
 dotnet restore Tamp.slnx
 dotnet build Tamp.slnx

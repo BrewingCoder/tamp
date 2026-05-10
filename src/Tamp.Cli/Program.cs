@@ -102,6 +102,6 @@ internal static class Program
         Console.WriteLine("Tamp locates a build project under build/, _build/, or .tamp/build/ in the");
         Console.WriteLine("current working tree (or an ancestor) and forwards the invocation to it.");
         Console.WriteLine();
-        Console.WriteLine("Documentation: https://github.com/BrewingCoder/tamp");
+        Console.WriteLine("Documentation: https://github.com/tamp-build/tamp");
     }
 }

@@ -17,8 +17,8 @@
     <Authors>Scott Singleton</Authors>
     <Company>Tamp Project</Company>
     <Copyright>Copyright (c) 2026 Scott Singleton</Copyright>
-    <PackageProjectUrl>https://github.com/BrewingCoder/tamp</PackageProjectUrl>
-    <RepositoryUrl>https://github.com/BrewingCoder/tamp</RepositoryUrl>
+    <PackageProjectUrl>https://github.com/tamp-build/tamp</PackageProjectUrl>
+    <RepositoryUrl>https://github.com/tamp-build/tamp</RepositoryUrl>
     <RepositoryType>git</RepositoryType>
     <PackageLicenseExpression>MIT</PackageLicenseExpression>
     <PackageTags>tamp;build;automation;ci;dotnet</PackageTags>

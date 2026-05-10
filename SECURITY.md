@@ -6,7 +6,7 @@ If you believe you have found a security issue in Tamp, please report it private
 
 Two channels, in order of preference:
 
-1. **GitHub private security advisory.** Use the [Security tab → Report a vulnerability](https://github.com/BrewingCoder/tamp/security/advisories/new) on this repository.
+1. **GitHub private security advisory.** Use the [Security tab → Report a vulnerability](https://github.com/tamp-build/tamp/security/advisories/new) on this repository.
 2. **Email.** Send to `scott@gscottsingleton.com` with a subject prefix of `[tamp security]`.
 
 Please include:
