@@ -103,6 +103,32 @@ public sealed class ProcessRunnerTests
     }
 
     [Fact]
+    public void Print_Reports_Stdin_Presence_Without_Leaking_Content()
+    {
+        var plan = new CommandPlan
+        {
+            Executable = "tool",
+            Arguments = [],
+            StandardInput = "p@ssw0rd!",
+        };
+        var sw = new StringWriter();
+        ProcessRunner.Print(plan, "Login", null, sw);
+        var s = sw.ToString();
+        Assert.Contains("stdin:", s);
+        Assert.Contains("9 bytes", s);
+        Assert.DoesNotContain("p@ssw0rd!", s);
+    }
+
+    [Fact]
+    public void Print_Without_Stdin_Omits_Stdin_Line()
+    {
+        var plan = new CommandPlan { Executable = "tool", Arguments = [] };
+        var sw = new StringWriter();
+        ProcessRunner.Print(plan, "T", null, sw);
+        Assert.DoesNotContain("stdin", sw.ToString());
+    }
+
+    [Fact]
     public void Print_Throws_On_Null_Plan()
     {
         Assert.Throws<ArgumentNullException>(() => ProcessRunner.Print(null!, "T", null, TextWriter.Null));

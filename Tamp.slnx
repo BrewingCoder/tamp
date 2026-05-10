@@ -19,6 +19,7 @@
   <Folder Name="/src/">
     <Project Path="src/Tamp.Core/Tamp.Core.csproj" />
     <Project Path="src/Tamp.Cli/Tamp.Cli.csproj" />
+    <Project Path="src/Tamp.Docker.V27/Tamp.Docker.V27.csproj" />
     <Project Path="src/Tamp.NetCli.V8/Tamp.NetCli.V8.csproj" />
     <Project Path="src/Tamp.NetCli.V9/Tamp.NetCli.V9.csproj" />
     <Project Path="src/Tamp.NetCli.V10/Tamp.NetCli.V10.csproj" />
@@ -26,6 +27,7 @@
   <Folder Name="/tests/">
     <Project Path="tests/Tamp.Core.Tests/Tamp.Core.Tests.csproj" />
     <Project Path="tests/Tamp.Cli.Tests/Tamp.Cli.Tests.csproj" />
+    <Project Path="tests/Tamp.Docker.V27.Tests/Tamp.Docker.V27.Tests.csproj" />
     <Project Path="tests/Tamp.NetCli.V8.Tests/Tamp.NetCli.V8.Tests.csproj" />
     <Project Path="tests/Tamp.NetCli.V9.Tests/Tamp.NetCli.V9.Tests.csproj" />
     <Project Path="tests/Tamp.NetCli.V10.Tests/Tamp.NetCli.V10.Tests.csproj" />

@@ -32,6 +32,7 @@ public static class ProcessRunner
             UseShellExecute = false,
             RedirectStandardOutput = true,
             RedirectStandardError = true,
+            RedirectStandardInput = plan.StandardInput is not null,
         };
         if (plan.WorkingDirectory is not null)
             psi.WorkingDirectory = plan.WorkingDirectory;
@@ -46,6 +47,11 @@ public static class ProcessRunner
         process.Start();
         process.BeginOutputReadLine();
         process.BeginErrorReadLine();
+        if (plan.StandardInput is not null)
+        {
+            process.StandardInput.Write(plan.StandardInput);
+            process.StandardInput.Close();
+        }
         process.WaitForExit();
         return process.ExitCode;
     }
@@ -79,6 +85,15 @@ public static class ProcessRunner
         {
             var names = string.Join(", ", plan.Secrets.Select(s => s.Name));
             writer.WriteLine($"  secrets: {names} (values redacted)");
+        }
+
+        if (plan.StandardInput is not null)
+        {
+            // Don't print the literal stdin content even after redaction —
+            // the table may not yet have a registration for everything fed
+            // through stdin (callers are not required to declare every byte
+            // as a Secret). Indicate presence and length only.
+            writer.WriteLine($"  stdin: <{plan.StandardInput.Length} bytes redacted>");
         }
 
         writer.WriteLine();

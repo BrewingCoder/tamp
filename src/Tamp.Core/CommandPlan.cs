@@ -14,6 +14,17 @@ public sealed record CommandPlan
     public string? WorkingDirectory { get; init; }
     public IReadOnlyList<Secret> Secrets { get; init; } = Array.Empty<Secret>();
 
+    /// <summary>
+    /// Optional content fed to the child process's standard input. Used by
+    /// wrappers whose underlying tool accepts a sensitive value via stdin
+    /// rather than as a command-line argument (<c>docker login
+    /// --password-stdin</c>, <c>gh auth login --with-token</c>, etc.) — this
+    /// keeps the value out of the OS process table for the lifetime of the
+    /// child process. The runner pipes this string verbatim and closes
+    /// stdin afterwards.
+    /// </summary>
+    public string? StandardInput { get; init; }
+
     private static readonly IReadOnlyDictionary<string, string> EmptyEnvironment
         = new Dictionary<string, string>(0);
 }
