@@ -351,10 +351,35 @@ public sealed class CiHostTests
     // ---- TampBuild integration ----
 
     [Fact]
-    public void TampBuild_CiHost_Property_Returns_Null_Outside_CI()
+    public void TampBuild_CiHost_Property_Resolves_Consistent_With_Environment()
     {
+        // This test runs both on developer machines (no CI vars → null) and
+        // on GitHub Actions itself (GITHUB_ACTIONS=true → GitHubActionsHost).
+        // Assert the property reflects whichever environment we're actually
+        // in, rather than assuming a specific one.
         TampBuild.ResetCachedDirectories();
-        // The test environment isn't a CI; CiHost should be null.
-        Assert.Null(TampBuild.CiHost);
+        var host = TampBuild.CiHost;
+        if (Environment.GetEnvironmentVariable("GITHUB_ACTIONS") == "true")
+        {
+            Assert.IsType<GitHubActionsHost>(host);
+        }
+        else if (Environment.GetEnvironmentVariable("TF_BUILD") == "True")
+        {
+            Assert.IsType<AzureDevOpsHost>(host);
+        }
+        else if (!string.IsNullOrEmpty(Environment.GetEnvironmentVariable("TEAMCITY_VERSION")))
+        {
+            Assert.IsType<TeamCityHost>(host);
+        }
+        else if (Environment.GetEnvironmentVariable("CI") == "true")
+        {
+            // Some other CI vendor not yet adapted; CiHost.Detect returns null
+            // for unsupported vendors. Acceptable.
+            Assert.Null(host);
+        }
+        else
+        {
+            Assert.Null(host);
+        }
     }
 }
