@@ -1,6 +1,0 @@
-﻿/Users/scott/repos/tamp/tests/Tamp.NetCli.V9.Tests/DotNetTests.cs
-/Users/scott/repos/tamp/tests/Tamp.NetCli.V9.Tests/SmokeTests.cs
-/Users/scott/.nuget/packages/microsoft.net.test.sdk/17.12.0/build/netcoreapp3.1/Microsoft.NET.Test.Sdk.Program.cs
-/Users/scott/.nuget/packages/xunit.runner.visualstudio/2.8.2/build/net6.0/xunit.runner.visualstudio.testadapter.dll
-/Users/scott/.nuget/packages/xunit.runner.visualstudio/2.8.2/build/net6.0/xunit.runner.reporters.netcoreapp10.dll
-/Users/scott/.nuget/packages/xunit.runner.visualstudio/2.8.2/build/net6.0/xunit.runner.utility.netcoreapp10.dll
