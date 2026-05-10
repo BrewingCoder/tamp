@@ -254,4 +254,117 @@ public sealed class DotNetTests
         Assert.Equal("hello", plan.Environment["MY_VAR"]);
         Assert.Equal("1", plan.Environment["DOTNET_NOLOGO"]);
     }
+
+    // ---- NuGetPush ----
+
+    [Fact]
+    public void NuGetPush_Requires_PackagePath()
+    {
+        Assert.Throws<InvalidOperationException>(() => DotNet.NuGetPush(s => { }));
+    }
+
+    [Fact]
+    public void NuGetPush_Throws_On_Null_Configurer()
+    {
+        Assert.Throws<ArgumentNullException>(() => DotNet.NuGetPush(null!));
+    }
+
+    [Fact]
+    public void NuGetPush_Begins_With_Verb_Tokens_Then_Package_Path()
+    {
+        var plan = DotNet.NuGetPush(s => s.SetPackagePath("artifacts/MyApp.1.0.0.nupkg"));
+        Assert.Equal("nuget", plan.Arguments[0]);
+        Assert.Equal("push", plan.Arguments[1]);
+        Assert.Equal("artifacts/MyApp.1.0.0.nupkg", plan.Arguments[2]);
+    }
+
+    [Fact]
+    public void NuGetPush_Glob_Path_Is_Passed_Through_Verbatim()
+    {
+        var plan = DotNet.NuGetPush(s => s.SetPackagePath("artifacts/*.nupkg"));
+        Assert.Contains("artifacts/*.nupkg", plan.Arguments);
+    }
+
+    [Fact]
+    public void NuGetPush_With_Source_And_ApiKey()
+    {
+        var key = new Secret("NuGetApiKey", "p4tt3rn-key");
+        var plan = DotNet.NuGetPush(s => s
+            .SetPackagePath("a.nupkg")
+            .SetSource("https://api.nuget.org/v3/index.json")
+            .SetApiKey(key));
+        var args = plan.Arguments;
+        Assert.Equal("https://api.nuget.org/v3/index.json", args[IndexOf(args, "--source") + 1]);
+        Assert.Equal("p4tt3rn-key", args[IndexOf(args, "--api-key") + 1]);
+    }
+
+    [Fact]
+    public void NuGetPush_Registers_ApiKey_As_Secret_For_Redaction()
+    {
+        var key = new Secret("NuGetApiKey", "supersecret");
+        var plan = DotNet.NuGetPush(s => s
+            .SetPackagePath("a.nupkg")
+            .SetApiKey(key));
+        Assert.Single(plan.Secrets);
+        Assert.Same(key, plan.Secrets[0]);
+    }
+
+    [Fact]
+    public void NuGetPush_With_SymbolSource_And_SymbolApiKey()
+    {
+        var key = new Secret("Key", "v1");
+        var symbolKey = new Secret("SymKey", "v2");
+        var plan = DotNet.NuGetPush(s => s
+            .SetPackagePath("a.nupkg")
+            .SetApiKey(key)
+            .SetSymbolSource("https://nuget.smbsrc.net/")
+            .SetSymbolApiKey(symbolKey));
+        var args = plan.Arguments;
+        Assert.Equal("https://nuget.smbsrc.net/", args[IndexOf(args, "--symbol-source") + 1]);
+        Assert.Equal("v2", args[IndexOf(args, "--symbol-api-key") + 1]);
+        Assert.Equal(2, plan.Secrets.Count);
+    }
+
+    [Fact]
+    public void NuGetPush_SkipDuplicate_Becomes_Flag()
+    {
+        var plan = DotNet.NuGetPush(s => s.SetPackagePath("a.nupkg").SetSkipDuplicate(true));
+        Assert.Contains("--skip-duplicate", plan.Arguments);
+    }
+
+    [Fact]
+    public void NuGetPush_NoSymbols_Becomes_Flag()
+    {
+        var plan = DotNet.NuGetPush(s => s.SetPackagePath("a.nupkg").SetNoSymbols(true));
+        Assert.Contains("--no-symbols", plan.Arguments);
+    }
+
+    [Fact]
+    public void NuGetPush_Timeout_Emits_Whole_Seconds()
+    {
+        var plan = DotNet.NuGetPush(s => s
+            .SetPackagePath("a.nupkg")
+            .SetTimeout(TimeSpan.FromMinutes(10)));
+        var args = plan.Arguments;
+        Assert.Equal("600", args[IndexOf(args, "--timeout") + 1]);
+    }
+
+    [Fact]
+    public void NuGetPush_DisableBuffering_And_NoServiceEndpoint_Are_Independent()
+    {
+        var plan = DotNet.NuGetPush(s => s
+            .SetPackagePath("a.nupkg")
+            .SetDisableBuffering(true)
+            .SetNoServiceEndpoint(true));
+        Assert.Contains("--disable-buffering", plan.Arguments);
+        Assert.Contains("--no-service-endpoint", plan.Arguments);
+    }
+
+    [Fact]
+    public void NuGetPush_Default_Source_And_NoFlags()
+    {
+        var plan = DotNet.NuGetPush(s => s.SetPackagePath("a.nupkg"));
+        Assert.Equal(["nuget", "push", "a.nupkg"], plan.Arguments);
+        Assert.Empty(plan.Secrets);
+    }
 }

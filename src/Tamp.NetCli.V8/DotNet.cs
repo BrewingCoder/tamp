@@ -1,7 +1,7 @@
 namespace Tamp.NetCli.V8;
 
 /// <summary>
-/// Tamp wrapper for the .NET 8 SDK CLI. Each method returns a
+/// Tamp wrapper for the .NET 10 SDK CLI. Each method returns a
 /// <see cref="CommandPlan"/> the runner dispatches or prints; nothing is
 /// executed at call time.
 /// </summary>
@@ -44,6 +44,19 @@ public static class DotNet
     {
         var s = new DotNetPublishSettings();
         configure?.Invoke(s);
+        return s.ToCommandPlan();
+    }
+
+    /// <summary>
+    /// <c>dotnet nuget push</c>. Pushes a <c>.nupkg</c> (or a glob of them)
+    /// to a NuGet feed. Pass the API key as a typed <see cref="Secret"/> so
+    /// it's registered with the runner's redaction table.
+    /// </summary>
+    public static CommandPlan NuGetPush(Action<DotNetNuGetPushSettings> configure)
+    {
+        if (configure is null) throw new ArgumentNullException(nameof(configure));
+        var s = new DotNetNuGetPushSettings();
+        configure(s);
         return s.ToCommandPlan();
     }
 }

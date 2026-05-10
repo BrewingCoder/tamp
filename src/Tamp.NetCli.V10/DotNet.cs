@@ -46,4 +46,17 @@ public static class DotNet
         configure?.Invoke(s);
         return s.ToCommandPlan();
     }
+
+    /// <summary>
+    /// <c>dotnet nuget push</c>. Pushes a <c>.nupkg</c> (or a glob of them)
+    /// to a NuGet feed. Pass the API key as a typed <see cref="Secret"/> so
+    /// it's registered with the runner's redaction table.
+    /// </summary>
+    public static CommandPlan NuGetPush(Action<DotNetNuGetPushSettings> configure)
+    {
+        if (configure is null) throw new ArgumentNullException(nameof(configure));
+        var s = new DotNetNuGetPushSettings();
+        configure(s);
+        return s.ToCommandPlan();
+    }
 }

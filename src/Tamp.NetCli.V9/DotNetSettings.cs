@@ -40,6 +40,13 @@ public abstract class DotNetSettingsBase
     /// </summary>
     protected abstract IEnumerable<string> BuildVerbArguments();
 
+    /// <summary>
+    /// Subclasses override when their plan should declare typed Secrets so
+    /// the runner's redaction table covers their values in any logged
+    /// output. Default: no secrets.
+    /// </summary>
+    protected virtual IReadOnlyList<Secret> BuildSecrets() => Array.Empty<Secret>();
+
     public CommandPlan ToCommandPlan()
     {
         var args = new List<string>(BuildVerbArguments());
@@ -55,6 +62,7 @@ public abstract class DotNetSettingsBase
             Arguments = args,
             Environment = env,
             WorkingDirectory = WorkingDirectory,
+            Secrets = BuildSecrets(),
         };
     }
 
