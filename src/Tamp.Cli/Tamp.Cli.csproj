@@ -7,13 +7,32 @@
   </PropertyGroup>
 
   <PropertyGroup Label="Global tool">
-    <PackageId>Tamp.Cli</PackageId>
     <Version>0.0.1-alpha</Version>
-    <Description>Tamp global tool. `dotnet tool install -g Tamp.Cli` to invoke `tamp &lt;target&gt;` against any project referencing Tamp.Core.</Description>
     <IsPackable>true</IsPackable>
     <PackAsTool>true</PackAsTool>
-    <ToolCommandName>tamp</ToolCommandName>
     <RollForward>Major</RollForward>
+    <!--
+      Two install conventions ship as separate NuGet packages from the
+      same code:
+        - CliFlavor=Bare         → package "Tamp.Cli"   command "tamp"
+                                    (NUKE-style; user types `tamp ci`)
+        - CliFlavor=DotnetVerb   → package "dotnet-tamp" command "dotnet-tamp"
+                                    (Cake-style; user types `dotnet tamp ci`)
+      CI builds both flavors per release. Default during dev = Bare.
+    -->
+    <CliFlavor Condition="'$(CliFlavor)' == ''">Bare</CliFlavor>
+  </PropertyGroup>
+
+  <PropertyGroup Condition="'$(CliFlavor)' == 'Bare'">
+    <PackageId>Tamp.Cli</PackageId>
+    <ToolCommandName>tamp</ToolCommandName>
+    <Description>Tamp global tool. Install via `dotnet tool install -g Tamp.Cli`; invoke as `tamp &lt;target&gt;`. For the `dotnet tamp &lt;target&gt;` form, install the sibling `dotnet-tamp` package instead.</Description>
+  </PropertyGroup>
+
+  <PropertyGroup Condition="'$(CliFlavor)' == 'DotnetVerb'">
+    <PackageId>dotnet-tamp</PackageId>
+    <ToolCommandName>dotnet-tamp</ToolCommandName>
+    <Description>Tamp global tool, dotnet-verb flavor. Install via `dotnet tool install -g dotnet-tamp`; invoke as `dotnet tamp &lt;target&gt;`. For the bare `tamp &lt;target&gt;` form, install the sibling `Tamp.Cli` package instead.</Description>
   </PropertyGroup>
 
   <ItemGroup>

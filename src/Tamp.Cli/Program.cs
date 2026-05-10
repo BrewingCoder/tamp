@@ -84,8 +84,11 @@ internal static class Program
         Console.WriteLine("tamp — small-core, plugin-driven build automation framework");
         Console.WriteLine();
         Console.WriteLine("USAGE:");
-        Console.WriteLine("  tamp <target> [--dry-run | --plan | --list | --list-tree] [--<param> <value>]");
-        Console.WriteLine("  tamp --version | --help");
+        Console.WriteLine("  dotnet tamp <target> [--dry-run | --plan | --list | --list-tree] [--<param> <value>]");
+        Console.WriteLine("  dotnet tamp --version | --help");
+        Console.WriteLine();
+        Console.WriteLine("INSTALL:");
+        Console.WriteLine("  dotnet tool install --global Tamp.Cli            (or --local, with a tool manifest)");
         Console.WriteLine();
         Console.WriteLine("FLAGS:");
         Console.WriteLine("  --dry-run            Print every CommandPlan that would run; execute nothing.");

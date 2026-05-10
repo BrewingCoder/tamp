@@ -49,7 +49,8 @@ Tamp.{ToolFamily}.{TargetVersion?}
 | Package | What It Is |
 |---|---|
 | `Tamp.Core` | Executor, parameter injection, path API, host detection, secret handling, dry-run |
-| `Tamp.Cli` | Global tool (`dotnet tool install -g Tamp.Cli`) |
+| `Tamp.Cli` | Global tool — bare-command flavor. `dotnet tool install -g Tamp.Cli`; invoke as `tamp <target>` |
+| `dotnet-tamp` | Global tool — dotnet-verb flavor. `dotnet tool install -g dotnet-tamp`; invoke as `dotnet tamp <target>` |
 | `Tamp.NetCli.V10` | Wraps .NET 10 SDK (`dotnet build`, `dotnet test`, `dotnet publish`, etc.) |
 | `Tamp.NetCli.V11` | Wraps .NET 11 SDK — separate package, separate semver track |
 | `Tamp.Docker.V27` | Wraps Docker 27.x CLI |
@@ -114,7 +115,15 @@ my-repo/
 </Project>
 ```
 
-Run via the global tool (`tamp ci`) or directly (`dotnet run --project build -- ci`). Both routes produce identical behavior. The global tool exists for ergonomics; nothing depends on it.
+Run via the global tool or directly. The global tool ships as two NuGet packages — same code, different on-PATH command name; pick whichever convention fits your habit:
+
+```bash
+dotnet tool install -g Tamp.Cli         # then: tamp ci          (NUKE-style)
+dotnet tool install -g dotnet-tamp      # then: dotnet tamp ci   (Cake-style)
+dotnet run --project build -- ci        # always available; no install
+```
+
+All three produce identical behaviour. The global tool exists for ergonomics; nothing depends on it.
 
 ---
 

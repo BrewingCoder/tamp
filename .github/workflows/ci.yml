@@ -92,8 +92,16 @@ jobs:
       - name: Restore
         run: dotnet restore Tamp.slnx
 
-      - name: Pack
+      - name: Pack (default)
         run: dotnet pack Tamp.slnx --no-restore --configuration Release --output ./artifacts
+
+      # The Cli project ships two NuGet packages from the same code:
+      #   - Tamp.Cli   (command "tamp"        — NUKE-style)
+      #   - dotnet-tamp (command "dotnet-tamp" — Cake-style)
+      # The default pack above produces Tamp.Cli; this second pack
+      # rebuilds just the Cli project under the DotnetVerb flavor.
+      - name: Pack Cli (dotnet-verb flavor)
+        run: dotnet pack src/Tamp.Cli/Tamp.Cli.csproj --configuration Release --output ./artifacts -p:CliFlavor=DotnetVerb
 
       - name: Upload packages
         uses: actions/upload-artifact@v4
