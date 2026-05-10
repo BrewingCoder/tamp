@@ -1,25 +1,99 @@
 name: Release
 
-# Stub. The real publish steps land once nuget.org trusted-publishing
-# policy is live and the user/login parameters are settled. Trigger is
-# manual-only for now so an accidental tag push can't fire an empty
-# (or worse, half-configured) publish job.
+# Publishes Tamp packages to nuget.org via trusted publishing
+# (OIDC). The nuget.org policy is scoped to this exact workflow
+# file under tamp-build/tamp; rename or move it and the policy
+# stops trusting requests.
 
 on:
   workflow_dispatch:
+    inputs:
+      dry_run:
+        description: 'If true, pack + login but do NOT push to nuget.org'
+        type: boolean
+        default: true
 
 permissions:
   id-token: write   # OIDC token for nuget.org trusted publishing
   contents: read
 
+env:
+  DOTNET_NOLOGO: '1'
+  DOTNET_CLI_TELEMETRY_OPTOUT: '1'
+  DOTNET_SKIP_FIRST_TIME_EXPERIENCE: '1'
+
 jobs:
   publish:
-    name: publish to nuget.org
+    name: pack + push to nuget.org
     runs-on: ubuntu-latest
     environment: release
+
     steps:
-      - name: Stub
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0   # source link wants the full history
+
+      - name: Install supported .NET SDKs
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: |
+            8.0.x
+            9.0.x
+            10.0.x
+
+      - name: Restore
+        run: dotnet restore Tamp.slnx
+
+      # Default flavor packs everything packable in the solution:
+      #   Tamp.Core, Tamp.Cli (bare command), Tamp.NetCli.V8/V9/V10,
+      #   Tamp.Docker.V27.
+      - name: Pack (default flavor)
+        run: dotnet pack Tamp.slnx --no-restore --configuration Release --output ./artifacts
+
+      # Cli ships a second nupkg with command name "dotnet-tamp" so
+      # `dotnet tamp ci` works (Cake-style). Same code, different
+      # PackageId + ToolCommandName via the CliFlavor MSBuild prop.
+      - name: Pack Cli (dotnet-verb flavor)
+        run: dotnet pack src/Tamp.Cli/Tamp.Cli.csproj --configuration Release --output ./artifacts -p:CliFlavor=DotnetVerb
+
+      - name: List packages
+        run: ls -la ./artifacts/
+
+      - name: NuGet login (OIDC → temp API key)
+        uses: NuGet/login@v1
+        id: nuget-login
+        with:
+          user: BrewingCoder
+
+      - name: Push packages
+        if: ${{ inputs.dry_run == false }}
+        env:
+          NUGET_API_KEY: ${{ steps.nuget-login.outputs.NUGET_API_KEY }}
         run: |
-          echo "Release workflow stub. Pack + nuget login + push land in a follow-up commit."
-          echo "ref: $GITHUB_REF"
-          echo "sha: $GITHUB_SHA"
+          shopt -s nullglob
+          set -e
+          for nupkg in ./artifacts/*.nupkg; do
+            echo "::group::push $(basename "$nupkg")"
+            dotnet nuget push "$nupkg" \
+              --api-key "$NUGET_API_KEY" \
+              --source https://api.nuget.org/v3/index.json \
+              --skip-duplicate
+            echo "::endgroup::"
+          done
+
+      - name: Dry-run summary
+        if: ${{ inputs.dry_run == true }}
+        run: |
+          echo "DRY RUN — would have pushed:"
+          ls -la ./artifacts/*.nupkg
+          echo ""
+          echo "Re-run with dry_run=false to actually publish."
+
+      - name: Upload packages as artifact
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: nupkgs
+          path: ./artifacts/*.nupkg
+          if-no-files-found: error
