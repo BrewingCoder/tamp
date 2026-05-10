@@ -1,0 +1,24 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <TargetFrameworks>net8.0;net9.0;net10.0</TargetFrameworks>
+    <RootNamespace>Tamp.Cli</RootNamespace>
+  </PropertyGroup>
+
+  <PropertyGroup Label="Global tool">
+    <PackageId>Tamp.Cli</PackageId>
+    <Version>0.0.1-alpha</Version>
+    <Description>Tamp global tool. `dotnet tool install -g Tamp.Cli` to invoke `tamp &lt;target&gt;` against any project referencing Tamp.Core.</Description>
+    <IsPackable>true</IsPackable>
+    <PackAsTool>true</PackAsTool>
+    <ToolCommandName>tamp</ToolCommandName>
+    <RollForward>Major</RollForward>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\Tamp.Core\Tamp.Core.csproj" />
+    <PackageReference Include="Microsoft.SourceLink.GitHub" PrivateAssets="All" />
+  </ItemGroup>
+
+</Project>

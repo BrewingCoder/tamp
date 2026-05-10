@@ -1,0 +1,45 @@
+# .NET build artifacts
+bin/
+obj/
+out/
+artifacts/
+*.user
+*.suo
+*.userosscache
+*.sln.docstates
+
+# NuGet
+*.nupkg
+*.snupkg
+.nuget/
+packages/
+!packages.config
+
+# Test results
+[Tt]est[Rr]esult*/
+[Cc]overage*/
+*.trx
+*.coverage
+*.coveragexml
+coverage.opencover.xml
+coverage.cobertura.xml
+
+# Visual Studio / Rider / VS Code
+.vs/
+.idea/
+.vscode/
+!.vscode/launch.json.example
+!.vscode/tasks.json.example
+*.swp
+
+# Tamp local state
+.tamp/
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Tooling
+.vsix
+*.log
+*.tlog

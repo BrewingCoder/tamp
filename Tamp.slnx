@@ -1,0 +1,33 @@
+<Solution>
+  <Folder Name="/Solution Items/">
+    <File Path="README.md" />
+    <File Path="LICENSE" />
+    <File Path="MAINTAINERS.md" />
+    <File Path="Directory.Build.props" />
+    <File Path="Directory.Packages.props" />
+    <File Path="global.json" />
+    <File Path=".gitignore" />
+  </Folder>
+  <Folder Name="/docs/">
+    <File Path="docs/community-modules.md" />
+    <File Path="docs/adr/README.md" />
+    <File Path="docs/adr/0002-package-naming-convention.md" />
+    <File Path="docs/adr/0006-repo-layout-monorepo.md" />
+    <File Path="docs/adr/0007-license-mit.md" />
+    <File Path="docs/adr/0009-governance-and-namespace-policy.md" />
+  </Folder>
+  <Folder Name="/src/">
+    <Project Path="src/Tamp.Core/Tamp.Core.csproj" />
+    <Project Path="src/Tamp.Cli/Tamp.Cli.csproj" />
+    <Project Path="src/Tamp.NetCli.V8/Tamp.NetCli.V8.csproj" />
+    <Project Path="src/Tamp.NetCli.V9/Tamp.NetCli.V9.csproj" />
+    <Project Path="src/Tamp.NetCli.V10/Tamp.NetCli.V10.csproj" />
+  </Folder>
+  <Folder Name="/tests/">
+    <Project Path="tests/Tamp.Core.Tests/Tamp.Core.Tests.csproj" />
+    <Project Path="tests/Tamp.Cli.Tests/Tamp.Cli.Tests.csproj" />
+    <Project Path="tests/Tamp.NetCli.V8.Tests/Tamp.NetCli.V8.Tests.csproj" />
+    <Project Path="tests/Tamp.NetCli.V9.Tests/Tamp.NetCli.V9.Tests.csproj" />
+    <Project Path="tests/Tamp.NetCli.V10.Tests/Tamp.NetCli.V10.Tests.csproj" />
+  </Folder>
+</Solution>

@@ -1,0 +1,20 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <TargetFrameworks>net8.0;net9.0;net10.0</TargetFrameworks>
+    <RootNamespace>Tamp</RootNamespace>
+    <AssemblyName>Tamp.Core</AssemblyName>
+  </PropertyGroup>
+
+  <PropertyGroup Label="Package">
+    <PackageId>Tamp.Core</PackageId>
+    <Version>0.0.1-alpha</Version>
+    <Description>Tamp's small core: target executor, parameter injection, host detection, secret handling, dry-run support. The lifecycle bet is that this stays small and tool wrappers ship as independently-versioned packages.</Description>
+    <IsPackable>true</IsPackable>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <PackageReference Include="Microsoft.SourceLink.GitHub" PrivateAssets="All" />
+  </ItemGroup>
+
+</Project>
