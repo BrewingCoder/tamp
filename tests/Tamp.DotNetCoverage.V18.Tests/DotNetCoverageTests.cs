@@ -40,8 +40,14 @@ public sealed class DotNetCoverageTests
     [Fact]
     public void Collect_Executable_Is_The_Tool_Path()
     {
-        var plan = DotNetCoverage.Collect(FakeTool(), FakeInner("dotnet", "test"));
-        Assert.Equal("/fake/dotnet-coverage", plan.Executable);
+        // Path.GetFullPath through AbsolutePath.Create rewrites the
+        // POSIX-style fixture to whatever the host expects (so on
+        // Windows /fake/dotnet-coverage normalizes to a drive-rooted
+        // form). Compare through the same normalization rather than
+        // asserting the literal POSIX string.
+        var tool = FakeTool();
+        var plan = DotNetCoverage.Collect(tool, FakeInner("dotnet", "test"));
+        Assert.Equal(tool.Executable.Value, plan.Executable);
     }
 
     [Fact]
@@ -225,17 +231,17 @@ public sealed class DotNetCoverageTests
     [Fact]
     public void Merge_AddInputs_Accepts_AbsolutePath_Sequence()
     {
-        var paths = new[]
-        {
-            AbsolutePath.Create("/abs/a.coverage"),
-            AbsolutePath.Create("/abs/b.coverage"),
-        };
+        // Compare normalized values, not literal POSIX strings — on
+        // Windows AbsolutePath.Create rewrites "/abs/..." to a
+        // drive-rooted form.
+        var pathA = AbsolutePath.Create("/abs/a.coverage");
+        var pathB = AbsolutePath.Create("/abs/b.coverage");
         var plan = DotNetCoverage.Merge(FakeTool(), m => m
-            .AddInputs(paths)
+            .AddInputs(new[] { pathA, pathB })
             .SetOutput("/abs/merged.cobertura.xml")
             .SetOutputFormat(CoverageFormat.Cobertura));
-        Assert.Contains("/abs/a.coverage", plan.Arguments);
-        Assert.Contains("/abs/b.coverage", plan.Arguments);
+        Assert.Contains(pathA.Value, plan.Arguments);
+        Assert.Contains(pathB.Value, plan.Arguments);
     }
 
     [Fact]

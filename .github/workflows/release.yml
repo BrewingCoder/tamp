@@ -45,6 +45,43 @@ jobs:
         with:
           fetch-depth: 0   # source link wants the full history
 
+      # Refuse to release a tag whose commit's CI hasn't passed (TAM-84 + branch protection).
+      # Skipped on workflow_dispatch — that path is the manual override
+      # for land-grabs / out-of-band publishes.
+      - name: Wait for CI to pass on this commit
+        if: github.event_name == 'push'
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        shell: bash
+        run: |
+          set -e
+          SHA="${{ github.sha }}"
+          echo "Waiting for CI workflow run on commit $SHA"
+          for i in $(seq 1 60); do
+            result=$(gh run list --workflow CI --commit "$SHA" --json status,conclusion --jq '.[0] // empty')
+            if [ -z "$result" ]; then
+              echo "  (no CI run for this commit yet — attempt $i/60, sleeping 10s)"
+              sleep 10
+              continue
+            fi
+            status=$(echo "$result" | jq -r '.status')
+            conclusion=$(echo "$result" | jq -r '.conclusion // ""')
+            echo "  CI status=$status conclusion=$conclusion (attempt $i/60)"
+            if [ "$status" != "completed" ]; then
+              echo "  (CI still running, sleeping 10s)"
+              sleep 10
+              continue
+            fi
+            if [ "$conclusion" = "success" ]; then
+              echo "✓ CI passed on $SHA — proceeding with release"
+              exit 0
+            fi
+            echo "::error::CI conclusion is '$conclusion' on commit $SHA. Refusing to release."
+            exit 1
+          done
+          echo "::error::Timed out waiting for CI to complete on commit $SHA after 10 minutes."
+          exit 1
+
       - name: Install supported .NET SDKs
         uses: actions/setup-dotnet@v4
         with:
