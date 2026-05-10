@@ -89,7 +89,8 @@ class Build : TampBuild
         .Description("Pack all NuGet artifacts into ./artifacts (both Cli flavors).")
         .Executes(() => new[]
         {
-            // Default flavor: Tamp.Core, Tamp.Cli (bare), Tamp.NetCli.V8/9/10, Tamp.Docker.V27.
+            // Default flavor: Tamp.Core, Tamp.Cli (bare), Tamp.NetCli.V8/9/10, Tamp.DotNetCoverage.V18.
+            // Third-party tool wrappers (Docker, Sonar, EF, GitVersion, etc.) ship from satellite repos.
             DotNet.Pack(s => s
                 .SetProject(Solution.Path)
                 .SetConfiguration(Configuration)

@@ -67,7 +67,9 @@ jobs:
 
       # Default flavor packs everything packable in the solution:
       #   Tamp.Core, Tamp.Cli (bare command), Tamp.NetCli.V8/V9/V10,
-      #   Tamp.Docker.V27.
+      #   Tamp.DotNetCoverage.V18.
+      # Third-party tool wrappers ship from satellite repos under the
+      # tamp-build org (tamp-ef, tamp-docker, tamp-sonar, etc.).
       - name: Pack (default flavor)
         run: |
           version_arg=""
