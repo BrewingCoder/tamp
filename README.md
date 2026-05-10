@@ -476,7 +476,7 @@ Schemas (the source-of-truth for what flags exist, their types, defaults, mutex 
 
 - `Tamp.Core` with target executor, parameter injection, dry-run, secret type, host detection (mid tier)
 - `Tamp.Cli` global tool with `tamp <target>`, `--dry-run`, `--plan`, `--list`
-- `Tamp.NetCli.V10` covering the dotnet CLI subset needed for one real pipeline
+- `Tamp.NetCli.V8`, `Tamp.NetCli.V9`, `Tamp.NetCli.V10` covering the dotnet CLI subset needed for one real pipeline, with the V10 module as the canonical reference and V8/V9 maintained for locked-down and STS-adopter consumers
 - One real pipeline (HoldFast's .NET SDK package) ported as the dogfooding target
 
 ### v1 — Real-world coverage
@@ -514,6 +514,16 @@ Tamp is MIT-licensed. See [LICENSE](LICENSE) and [docs/adr/0007-license-mit.md](
 ## License
 
 MIT. See [LICENSE](LICENSE).
+
+---
+
+## Supported .NET Versions
+
+Tamp's first-party assemblies (`Tamp.Core`, `Tamp.Cli`, all `Tamp.NetCli.V{N}` modules, future modules) multi-target every .NET release that Microsoft considers in support — both LTS and STS. We track [Microsoft's support calendar](https://dotnet.microsoft.com/en-us/platform/support/policy/dotnet-core) exactly: a TFM gets added the day a new release ships and dropped the day Microsoft EOLs it. No Tamp-specific support definition; no skipping STS.
+
+Today (2026), that's `net8.0;net9.0;net10.0`. The full rationale, including the federal/regulated/locked-down VDI consumer cohort that drives the multi-target requirement, is recorded in [ADR 0015 — Target framework strategy](docs/adr/0015-target-framework-strategy.md).
+
+The `Tamp.NetCli.V{N}` package version is independent of the TFM list: a wrapper for `dotnet 8`'s CLI surface (`Tamp.NetCli.V8`) can continue to exist for as long as consumers still have the `dotnet 8` SDK installed, even after `net8.0` is dropped from the wrapper assembly's TFM list. Module retirement is a separate decision, made per module.
 
 ---
 
