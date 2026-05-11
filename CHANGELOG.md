@@ -8,6 +8,18 @@ Pre-1.0 versions may break public API freely between minor versions; the `0.x` l
 
 ## [Unreleased]
 
+## [1.0.7] — 2026-05-11
+
+### Added
+
+- **Stale-branch pre-PR gate (TAM-105).** New `GitRepository.AssertNotStale(maxCommitsBehind, baseRef, fetch)` extension method that fetches the comparison ref and counts commits ahead via `git rev-list --count`. Throws `StaleBranchException` with a structured `StaleBranchReport` (BaseRef / CommitsBehind / MaxAllowed / IsStale / FetchPerformed). Companion `CheckStaleness` overload returns the report without throwing.
+  - Default threshold: 20 commits behind `origin/main`.
+  - Tunable per-call: thresholds (including 0 for strict-mode "ANY commits behind"), base ref (`origin/master`, `upstream/develop`, etc.), fetch opt-out, timeout.
+  - Pluggable `IGitRunner` seam (internal) so tests don't shell out — 21 new tests cover threshold boundaries, fetch parsing, error propagation (fetch failure, rev-list failure, non-numeric output), and argument guards.
+  - Background: GitHub / ADO's three-way auto-merge can succeed mechanically against a branch that's far behind, resurrecting deleted files or replaying old logic against a new schema. The gate forces conflicts to surface locally before push.
+
+[1.0.7]: https://github.com/tamp-build/tamp/releases/tag/v1.0.7
+
 ## [1.0.6] — 2026-05-11
 
 ### Added
