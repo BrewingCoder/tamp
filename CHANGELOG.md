@@ -8,6 +8,29 @@ Pre-1.0 versions may break public API freely between minor versions; the `0.x` l
 
 ## [Unreleased]
 
+## [1.0.10] — 2026-05-11
+
+### Added — HoldFast trial wave 6 (TAM-127, Critical)
+
+- **`TampBuild.CleanArtifacts()` helper.** Replaces the unsafe `RootDirectory.GlobDirectories("**/bin", "**/obj")` pattern previously documented as the recommended `Clean` shape. The helper iterates `Solution.Projects` (typed contract) and deletes only each project's `bin/` and `obj/` directories plus the conventional `artifacts/` root. NEVER globs the repo tree.
+  - **Self-deletion guard built in**: skips the project whose entry assembly is currently executing (detected via `Assembly.GetEntryAssembly().Location`). No `build/`-exclusion boilerplate required.
+  - **Solution resolution**: when called without arguments, reflects over the build instance for a `[Solution]`-injected `Solution` field or property and uses it.
+  - **Idempotent**: re-runs are safe.
+  - Canonical usage:
+    ```csharp
+    class Build : TampBuild
+    {
+        [Solution] readonly Solution Solution = null!;
+        Target Clean => _ => _.Executes(() => CleanArtifacts());
+    }
+    ```
+
+### Background
+
+HoldFast trial friction #12 demonstrated catastrophic blast radius on the `**/bin` glob pattern previously documented in TAM-118: 531 tracked files deleted in 14 seconds on the real HoldFast monorepo. The pattern matched `node_modules/*/bin/`, tracked SDK source dirs (Ruby `bin/console`, Node `bin/clean-dist.sh`), and Playwright-fixture-bearing `tests/**/bin/Debug/.playwright/`. The fix at the framework level — not just the docs — closes the foot-gun for every adopter.
+
+[1.0.10]: https://github.com/tamp-build/tamp/releases/tag/v1.0.10
+
 ## [1.0.9] — 2026-05-11
 
 ### Added — HoldFast trial wave 2 (Tamp.NetCli.V8 / V9 / V10)

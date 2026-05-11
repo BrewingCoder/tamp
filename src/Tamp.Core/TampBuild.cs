@@ -13,7 +13,7 @@ namespace Tamp;
 /// delegate against a fresh <see cref="ITargetDefinition"/>, and assembles
 /// the resulting <see cref="TargetSpec"/>s into the build's target graph.
 /// </remarks>
-public abstract class TampBuild
+public abstract partial class TampBuild
 {
     /// <summary>
     /// Whether the current build invocation is local (developer machine)
