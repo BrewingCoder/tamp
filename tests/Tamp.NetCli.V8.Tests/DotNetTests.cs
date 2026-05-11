@@ -555,4 +555,58 @@ public sealed class DotNetTests
         var args = DotNet.Format(s => s.SetVerbosity(DotNetVerbosity.Diagnostic)).Arguments;
         Assert.Equal("diagnostic", args[IndexOf(args, "--verbosity") + 1]);
     }
+
+    // ---- Clean (TAM-112) ----
+
+    [Fact]
+    public void Clean_Verb_Token_Is_clean()
+    {
+        Assert.Equal("clean", DotNet.Clean().Arguments[0]);
+    }
+
+    [Fact]
+    public void Clean_All_Flags_Round_Trip()
+    {
+        var args = DotNet.Clean(s => s
+            .SetProject("./Foo.csproj")
+            .SetConfiguration(Configuration.Release)
+            .SetFramework("net8.0")
+            .SetRuntime("linux-x64")
+            .SetOutput("./bin/Release/net8.0")
+            .SetNoLogo()).Arguments;
+        Assert.Contains("./Foo.csproj", args);
+        Assert.Equal("Release", args[IndexOf(args, "--configuration") + 1]);
+        Assert.Equal("net8.0", args[IndexOf(args, "--framework") + 1]);
+        Assert.Contains("--nologo", args);
+    }
+
+    // ---- Test — TRX rewrite on solution mode (TAM-111) ----
+
+    [Fact]
+    public void Test_Solution_Project_With_LogFileName_Rewrites_To_LogFilePrefix()
+    {
+        var args = DotNet.Test(s => s
+            .SetProject("./Foo.slnx")
+            .AddLogger("trx;LogFileName=test-results.trx")).Arguments;
+        Assert.Equal("trx;LogFilePrefix=test-results", args[IndexOf(args, "--logger") + 1]);
+    }
+
+    [Fact]
+    public void Test_Csproj_Project_Leaves_LogFileName_Untouched()
+    {
+        var args = DotNet.Test(s => s
+            .SetProject("./Tests/Foo.Tests.csproj")
+            .AddLogger("trx;LogFileName=test-results.trx")).Arguments;
+        Assert.Equal("trx;LogFileName=test-results.trx", args[IndexOf(args, "--logger") + 1]);
+    }
+
+    [Fact]
+    public void Test_Solution_AutoExpand_Disabled_Preserves_LogFileName()
+    {
+        var args = DotNet.Test(s => s
+            .SetProject("./Foo.slnx")
+            .AddLogger("trx;LogFileName=test-results.trx")
+            .SetAutoExpandTrxForSolution(false)).Arguments;
+        Assert.Equal("trx;LogFileName=test-results.trx", args[IndexOf(args, "--logger") + 1]);
+    }
 }

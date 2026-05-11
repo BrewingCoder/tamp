@@ -555,4 +555,190 @@ public sealed class DotNetTests
         var args = DotNet.Format(s => s.SetVerbosity(DotNetVerbosity.Diagnostic)).Arguments;
         Assert.Equal("diagnostic", args[IndexOf(args, "--verbosity") + 1]);
     }
+
+    // ---- Clean (TAM-112) ----
+
+    [Fact]
+    public void Clean_Verb_Token_Is_clean()
+    {
+        Assert.Equal("clean", DotNet.Clean().Arguments[0]);
+    }
+
+    [Fact]
+    public void Clean_Targets_The_Dotnet_Executable()
+    {
+        Assert.Equal("dotnet", DotNet.Clean().Executable);
+    }
+
+    [Fact]
+    public void Clean_Project_Becomes_Positional()
+    {
+        var args = DotNet.Clean(s => s.SetProject("./Foo.csproj")).Arguments;
+        Assert.Equal("./Foo.csproj", args[1]);
+    }
+
+    [Fact]
+    public void Clean_All_Flags_Round_Trip()
+    {
+        var args = DotNet.Clean(s => s
+            .SetProject("./Foo.csproj")
+            .SetConfiguration(Configuration.Release)
+            .SetFramework("net10.0")
+            .SetRuntime("linux-x64")
+            .SetOutput("./bin/Release/net10.0")
+            .SetNoLogo()
+            .SetVerbosity(DotNetVerbosity.Detailed)).Arguments;
+        Assert.Contains("./Foo.csproj", args);
+        Assert.Equal("Release", args[IndexOf(args, "--configuration") + 1]);
+        Assert.Equal("net10.0", args[IndexOf(args, "--framework") + 1]);
+        Assert.Equal("linux-x64", args[IndexOf(args, "--runtime") + 1]);
+        Assert.Equal("./bin/Release/net10.0", args[IndexOf(args, "--output") + 1]);
+        Assert.Contains("--nologo", args);
+        Assert.Equal("detailed", args[IndexOf(args, "--verbosity") + 1]);
+    }
+
+    [Fact]
+    public void Clean_NoLogo_Omitted_When_False()
+    {
+        var args = DotNet.Clean().Arguments;
+        Assert.DoesNotContain("--nologo", args);
+    }
+
+    [Fact]
+    public void Clean_Configuration_Omitted_When_Null()
+    {
+        var args = DotNet.Clean().Arguments;
+        Assert.DoesNotContain("--configuration", args);
+    }
+
+    // ---- Test — TRX rewrite on solution mode (TAM-111) ----
+
+    [Fact]
+    public void Test_Solution_Project_With_LogFileName_Rewrites_To_LogFilePrefix()
+    {
+        var args = DotNet.Test(s => s
+            .SetProject("./HoldFast.Backend.slnx")
+            .AddLogger("trx;LogFileName=test-results.trx")).Arguments;
+        var logger = args[IndexOf(args, "--logger") + 1];
+        Assert.Equal("trx;LogFilePrefix=test-results", logger);
+    }
+
+    [Fact]
+    public void Test_Sln_File_Also_Triggers_Rewrite()
+    {
+        var args = DotNet.Test(s => s
+            .SetProject("./HoldFast.Backend.sln")
+            .AddLogger("trx;LogFileName=test-results.trx")).Arguments;
+        var logger = args[IndexOf(args, "--logger") + 1];
+        Assert.Equal("trx;LogFilePrefix=test-results", logger);
+    }
+
+    [Fact]
+    public void Test_Csproj_Project_Leaves_LogFileName_Untouched()
+    {
+        var args = DotNet.Test(s => s
+            .SetProject("./Tests/Foo.Tests.csproj")
+            .AddLogger("trx;LogFileName=test-results.trx")).Arguments;
+        var logger = args[IndexOf(args, "--logger") + 1];
+        Assert.Equal("trx;LogFileName=test-results.trx", logger);
+    }
+
+    [Fact]
+    public void Test_Solution_Preserves_Other_Logger_Segments()
+    {
+        var args = DotNet.Test(s => s
+            .SetProject("./HoldFast.Backend.slnx")
+            .AddLogger("trx;LogFileName=test-results.trx;Verbosity=detailed")).Arguments;
+        var logger = args[IndexOf(args, "--logger") + 1];
+        Assert.Equal("trx;LogFilePrefix=test-results;Verbosity=detailed", logger);
+    }
+
+    [Fact]
+    public void Test_Solution_Without_LogFileName_Passes_Through()
+    {
+        var args = DotNet.Test(s => s
+            .SetProject("./HoldFast.Backend.slnx")
+            .AddLogger("trx;LogFilePrefix=results")).Arguments;
+        var logger = args[IndexOf(args, "--logger") + 1];
+        Assert.Equal("trx;LogFilePrefix=results", logger);
+    }
+
+    [Fact]
+    public void Test_Solution_Non_Trx_Logger_Passes_Through()
+    {
+        var args = DotNet.Test(s => s
+            .SetProject("./HoldFast.Backend.slnx")
+            .AddLogger("console;verbosity=detailed")).Arguments;
+        var logger = args[IndexOf(args, "--logger") + 1];
+        Assert.Equal("console;verbosity=detailed", logger);
+    }
+
+    [Fact]
+    public void Test_Solution_AutoExpand_Disabled_Preserves_LogFileName()
+    {
+        var args = DotNet.Test(s => s
+            .SetProject("./HoldFast.Backend.slnx")
+            .AddLogger("trx;LogFileName=test-results.trx")
+            .SetAutoExpandTrxForSolution(false)).Arguments;
+        var logger = args[IndexOf(args, "--logger") + 1];
+        Assert.Equal("trx;LogFileName=test-results.trx", logger);
+    }
+
+    [Fact]
+    public void Test_Solution_LogFileName_Without_Trx_Extension_Strips_Cleanly()
+    {
+        var args = DotNet.Test(s => s
+            .SetProject("./HoldFast.Backend.slnx")
+            .AddLogger("trx;LogFileName=test-results")).Arguments;
+        var logger = args[IndexOf(args, "--logger") + 1];
+        Assert.Equal("trx;LogFilePrefix=test-results", logger);
+    }
+
+    [Fact]
+    public void Test_Solution_Multiple_Loggers_Each_Rewritten_Independently()
+    {
+        var args = DotNet.Test(s => s
+            .SetProject("./HoldFast.Backend.slnx")
+            .AddLogger("trx;LogFileName=runA.trx")
+            .AddLogger("console")
+            .AddLogger("trx;LogFileName=runB.trx;Verbosity=normal")).Arguments;
+        var loggerArgs = args
+            .Select((a, i) => (a, i))
+            .Where(t => t.a == "--logger")
+            .Select(t => args[t.i + 1])
+            .ToList();
+        Assert.Equal(3, loggerArgs.Count);
+        Assert.Equal("trx;LogFilePrefix=runA", loggerArgs[0]);
+        Assert.Equal("console", loggerArgs[1]);
+        Assert.Equal("trx;LogFilePrefix=runB;Verbosity=normal", loggerArgs[2]);
+    }
+
+    [Fact]
+    public void Test_Bare_Trx_Logger_With_No_Params_Passes_Through()
+    {
+        var args = DotNet.Test(s => s
+            .SetProject("./HoldFast.Backend.slnx")
+            .AddLogger("trx")).Arguments;
+        var logger = args[IndexOf(args, "--logger") + 1];
+        Assert.Equal("trx", logger);
+    }
+
+    [Fact]
+    public void Test_Auto_Expand_Default_Is_True()
+    {
+        var s = new DotNetTestSettings();
+        Assert.True(s.AutoExpandTrxForSolution);
+    }
+
+    [Fact]
+    public void IsSolutionProject_Detects_Extensions_Case_Insensitively()
+    {
+        Assert.True(DotNetTestSettings.IsSolutionProject("Foo.sln"));
+        Assert.True(DotNetTestSettings.IsSolutionProject("Foo.SLN"));
+        Assert.True(DotNetTestSettings.IsSolutionProject("Foo.slnx"));
+        Assert.True(DotNetTestSettings.IsSolutionProject("Foo.SLNX"));
+        Assert.False(DotNetTestSettings.IsSolutionProject("Foo.csproj"));
+        Assert.False(DotNetTestSettings.IsSolutionProject(null));
+        Assert.False(DotNetTestSettings.IsSolutionProject(""));
+    }
 }

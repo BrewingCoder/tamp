@@ -8,6 +8,19 @@ Pre-1.0 versions may break public API freely between minor versions; the `0.x` l
 
 ## [Unreleased]
 
+## [1.0.9] — 2026-05-11
+
+### Added — HoldFast trial wave 2 (Tamp.NetCli.V8 / V9 / V10)
+
+- **`DotNet.Clean()` verb (TAM-112).** Wraps `dotnet clean` across all three NetCli majors. Settings cover the standard knobs: Project (positional), Configuration, Framework, Runtime, Output, NoLogo, Verbosity. Closes the wrapper-completeness gap holdfast hit when porting their Clean target.
+- **TRX overwrite mitigation for solution-mode `dotnet test` (TAM-111).** When `SetProject` targets a `.sln`/`.slnx` AND a TRX logger string carries a static `LogFileName=foo.trx`, the wrapper rewrites it to `LogFilePrefix=foo` so VSTest auto-disambiguates the output per assembly. Previously, solution-mode runs against multiple test projects overwrote the same TRX once per project — only the LAST assembly's results survived (holdfast saw 1,152 of 3,172 tests in the final file). Default-on for the friendlier shape; opt out via `SetAutoExpandTrxForSolution(false)` to preserve literal logger strings. Non-TRX loggers, TRX loggers without `LogFileName`, and `.csproj` projects pass through unchanged.
+
+### Notes
+
+- Tamp.Core itself is unchanged from 1.0.8 — the version bump is a Directory.Build.props artifact of TAM-81's monolithic-version convention. Consumers of Tamp.Core alone can stay on 1.0.8.
+
+[1.0.9]: https://github.com/tamp-build/tamp/releases/tag/v1.0.9
+
 ## [1.0.8] — 2026-05-11
 
 ### Added — HoldFast trial wave 1 (TAM-108, 109, 113, 115, 116)

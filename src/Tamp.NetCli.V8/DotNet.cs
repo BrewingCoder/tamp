@@ -26,6 +26,14 @@ public static class DotNet
         return s.ToCommandPlan();
     }
 
+    /// <summary><c>dotnet clean</c> — removes bin/obj for the configured (or all) configurations.</summary>
+    public static CommandPlan Clean(Action<DotNetCleanSettings>? configure = null)
+    {
+        var s = new DotNetCleanSettings();
+        configure?.Invoke(s);
+        return s.ToCommandPlan();
+    }
+
     public static CommandPlan Test(Action<DotNetTestSettings>? configure = null)
     {
         var s = new DotNetTestSettings();

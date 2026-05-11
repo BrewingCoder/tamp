@@ -26,6 +26,18 @@ public static class DotNet
         return s.ToCommandPlan();
     }
 
+    /// <summary>
+    /// <c>dotnet clean</c> — removes <c>bin/</c> and <c>obj/</c> outputs for the configured (or all)
+    /// configurations. Pair with a Clean target's <c>AbsolutePath.GlobDirectories("**/bin", "**/obj")</c>
+    /// loop when you need to nuke the artifact tree harder than <c>dotnet clean</c> goes.
+    /// </summary>
+    public static CommandPlan Clean(Action<DotNetCleanSettings>? configure = null)
+    {
+        var s = new DotNetCleanSettings();
+        configure?.Invoke(s);
+        return s.ToCommandPlan();
+    }
+
     public static CommandPlan Test(Action<DotNetTestSettings>? configure = null)
     {
         var s = new DotNetTestSettings();

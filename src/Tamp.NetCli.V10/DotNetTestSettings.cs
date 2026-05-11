@@ -16,6 +16,15 @@ public sealed class DotNetTestSettings : DotNetSettingsBase
     public TimeSpan? BlameHangTimeout { get; set; }
     public Dictionary<string, string> Properties { get; } = new();
 
+    /// <summary>
+    /// When true (default), and <see cref="Project"/> targets a <c>.sln</c>/<c>.slnx</c>, any TRX
+    /// logger string with a static <c>LogFileName=foo.trx</c> is rewritten to
+    /// <c>LogFilePrefix=foo</c> so VSTest auto-disambiguates per assembly. Without this rewrite,
+    /// solution-mode runs overwrite the TRX once per test project — only the last assembly's
+    /// results survive. Set to false to preserve the literal logger string (legacy behavior).
+    /// </summary>
+    public bool AutoExpandTrxForSolution { get; set; } = true;
+
     public DotNetTestSettings SetProject(string? project) { Project = project; return this; }
     public DotNetTestSettings SetConfiguration(Configuration c) { Configuration = c; return this; }
     public DotNetTestSettings SetNoBuild(bool v) { NoBuild = v; return this; }
@@ -32,6 +41,7 @@ public sealed class DotNetTestSettings : DotNetSettingsBase
     public DotNetTestSettings SetProperty(string name, string value) { Properties[name] = value; return this; }
     public DotNetTestSettings SetVerbosity(DotNetVerbosity v) { Verbosity = v; return this; }
     public DotNetTestSettings SetWorkingDirectory(string? cwd) { WorkingDirectory = cwd; return this; }
+    public DotNetTestSettings SetAutoExpandTrxForSolution(bool v = true) { AutoExpandTrxForSolution = v; return this; }
 
     protected override IEnumerable<string> BuildVerbArguments()
     {
@@ -41,7 +51,7 @@ public sealed class DotNetTestSettings : DotNetSettingsBase
         if (NoBuild) yield return "--no-build";
         if (NoRestore) yield return "--no-restore";
         if (!string.IsNullOrEmpty(Filter)) { yield return "--filter"; yield return Filter!; }
-        foreach (var l in Loggers) { yield return "--logger"; yield return l; }
+        foreach (var l in EmitLoggers()) { yield return "--logger"; yield return l; }
         foreach (var c in DataCollectors) { yield return "--collect"; yield return c; }
         if (!string.IsNullOrEmpty(ResultsDirectory)) { yield return "--results-directory"; yield return ResultsDirectory!; }
         if (!string.IsNullOrEmpty(Settings)) { yield return "--settings"; yield return Settings!; }
@@ -51,5 +61,60 @@ public sealed class DotNetTestSettings : DotNetSettingsBase
         if (BlameHangTimeout is { } t) { yield return "--blame-hang-timeout"; yield return $"{(int)t.TotalMilliseconds}ms"; }
         foreach (var (k, v) in Properties)
             yield return $"-p:{k}={v}";
+    }
+
+    private IEnumerable<string> EmitLoggers()
+    {
+        if (!AutoExpandTrxForSolution || !IsSolutionProject(Project))
+            return Loggers;
+        return Loggers.Select(RewriteTrxLoggerForSolution);
+    }
+
+    internal static bool IsSolutionProject(string? project)
+    {
+        if (string.IsNullOrEmpty(project)) return false;
+        var ext = System.IO.Path.GetExtension(project);
+        return string.Equals(ext, ".sln", StringComparison.OrdinalIgnoreCase)
+            || string.Equals(ext, ".slnx", StringComparison.OrdinalIgnoreCase);
+    }
+
+    /// <summary>
+    /// When a TRX logger string carries a static <c>LogFileName=foo.trx</c>, rewrites it to
+    /// <c>LogFilePrefix=foo</c>. Non-TRX loggers and TRX loggers without LogFileName pass through.
+    /// </summary>
+    internal static string RewriteTrxLoggerForSolution(string logger)
+    {
+        if (string.IsNullOrEmpty(logger)) return logger;
+        // Must start with "trx" followed by `;` or end-of-string. Otherwise pass through unchanged.
+        var firstSep = logger.IndexOf(';');
+        var prefix = firstSep < 0 ? logger : logger[..firstSep];
+        if (!string.Equals(prefix.Trim(), "trx", StringComparison.OrdinalIgnoreCase))
+            return logger;
+        if (firstSep < 0) return logger;  // bare "trx" with no params
+
+        var segments = logger[(firstSep + 1)..].Split(';', StringSplitOptions.RemoveEmptyEntries);
+        var rewrote = false;
+        var rebuilt = new List<string> { prefix };
+        foreach (var seg in segments)
+        {
+            var eq = seg.IndexOf('=');
+            if (eq <= 0) { rebuilt.Add(seg); continue; }
+            var key = seg[..eq].Trim();
+            var value = seg[(eq + 1)..];
+            if (string.Equals(key, "LogFileName", StringComparison.OrdinalIgnoreCase))
+            {
+                // Strip .trx (if present) so the prefix doesn't end up "foo.trx_<asm>.trx".
+                var trimmed = value.EndsWith(".trx", StringComparison.OrdinalIgnoreCase)
+                    ? value[..^4]
+                    : value;
+                rebuilt.Add($"LogFilePrefix={trimmed}");
+                rewrote = true;
+            }
+            else
+            {
+                rebuilt.Add(seg);
+            }
+        }
+        return rewrote ? string.Join(";", rebuilt) : logger;
     }
 }
