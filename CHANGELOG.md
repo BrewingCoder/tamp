@@ -12,6 +12,15 @@ Pre-1.0 versions may break public API freely between minor versions; the `0.x` l
 
 - **`Tamp.*` NuGet prefix reserved** to the `Tamp` account on nuget.org (confirmed by NuGet support 2026-05-10). All future `Tamp.*` packages publish with the verified-publisher checkmark; only the `Tamp` account can claim package IDs under the prefix.
 - **HoldFast wrapper sprint shipped** — TAM-85 through TAM-92. Seven new satellite packages live on nuget.org: `Tamp.Yarn.V4`, `Tamp.Turbo.V2`, `Tamp.GraphQLCodegen.V5`, `Tamp.Vite.V5` (Vite + Vitest), `Tamp.Playwright.V1`, `Tamp.TruffleHog.V3`, `Tamp.CodeQL.V2`. `Tamp.Docker.V27` extended with `compose` + `buildx` sub-facades in 0.2.0 (TAM-87).
+- **Strata adoption roadmap landed in TAM project** — TAM-94 through TAM-106 cover Azure / ADO / IaC / testing wrappers requested by Strata-Scott. Tier 1 (blockers): `Tamp.AzureCli.V2`, `Tamp.AzureStaticWebApps.V2`, `Tamp.Bicep`, `Tamp.AdoRest.V7`. Naming: full-word `Azure*` prefix for the Azure family (matches Microsoft SDK convention).
+
+## [1.0.4] — 2026-05-11
+
+### Added
+
+- `InternalsVisibleTo` entries pre-loaded for the Strata-roadmap wrapper assemblies (TAM-94 through TAM-103): `Tamp.AzureCli.V2`, `Tamp.AzureStaticWebApps.V2`, `Tamp.Bicep`, `Tamp.AdoRest.V7`, `Tamp.AdoServiceConnection.V1`, `Tamp.AzureFunctionsCoreTools.V4`, `Tamp.Coverlet.V6`, `Tamp.Testcontainers.V4`, `Tamp.ServiceBus.V8`. Same pre-loading pattern used for 1.0.3 — avoids a cascade of patch bumps as the wrappers ship.
+
+[1.0.4]: https://github.com/tamp-build/tamp/releases/tag/v1.0.4
 
 ## [1.0.3] — 2026-05-10
 
@@ -40,7 +49,7 @@ Pre-1.0 versions may break public API freely between minor versions; the `0.x` l
 
 - **TAM-84** — two `Tamp.DotNetCoverage.V18` tests previously failing on `windows-latest` (`Collect_Executable_Is_The_Tool_Path`, `Merge_AddInputs_Accepts_AbsolutePath_Sequence`). Both had hardcoded forward-slash path assertions that didn't survive `AbsolutePath`'s `Path.GetFullPath` normalization on Windows. Now compare through the same `AbsolutePath.Value` they emit.
 
-[Unreleased]: https://github.com/tamp-build/tamp/compare/v1.0.3...HEAD
+[Unreleased]: https://github.com/tamp-build/tamp/compare/v1.0.4...HEAD
 [1.0.2]: https://github.com/tamp-build/tamp/releases/tag/v1.0.2
 
 ## [1.0.1] — 2026-05-10
