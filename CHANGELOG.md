@@ -8,6 +8,58 @@ Pre-1.0 versions may break public API freely between minor versions; the `0.x` l
 
 ## [Unreleased]
 
+## [1.1.0] — 2026-05-11 — Build.cs concision pass (BREAKING)
+
+### Breaking — `.TopLevel()` default inverted
+
+- **Targets are listable + callable by default.** `.TopLevel()` is now a no-op marked `[Obsolete]` for back-compat.
+- **`.Internal()` is the new opt-out.** Internal targets are hidden from `--list` AND non-callable from CLI. Direct invocation fails with a friendly error listing dependent targets.
+
+**Migration**:
+
+| Before (1.0.x) | After (1.1.0) |
+|---|---|
+| `Target Pack => _ => _.TopLevel().Executes(...);` | `Target Pack => _ => _.Executes(...);` (TopLevel was the default-explicit marker; now implicit) |
+| `Target _Helper => _ => _.Executes(...);` (was hidden via "no TopLevel anywhere") | `Target _Helper => _ => _.Internal().Executes(...);` (explicit opt-out) |
+
+The `.TopLevel()` call sites still compile (no-op + obsolete warning). The TAMP001 Roslyn analyzer (forthcoming, separate package) will offer a code-fix to delete them.
+
+`.Internal()` and `.Default()` are mutually exclusive — declaring both throws at startup. Internal targets with no incoming dependency edges emit a stranded-internal warning ("will never run") but the build continues.
+
+### Added — kill `nameof()`
+
+- **`[CallerArgumentExpression]` overloads** on `DependsOn`, `After`, `Before`, `Triggers`, `TriggeredBy`, `OnFailureOf`. User writes `.DependsOn(Restore)`; the C# 11+ compiler injects `"Restore"` as the captured-expression string. No `nameof()`, no Expression trees, zero runtime overhead.
+- Existing string overloads remain — `.DependsOn("Restore")` and `.DependsOn(nameof(Restore))` still compile and work.
+- Validator normalizes the captured expression (strips leading `this.`) and rejects complex expressions (`Restore ?? Compile`, method calls) with helpful error messages.
+- IntelliSense filters to `Target`-typed members of the build class when the user types `_.DependsOn(`. Significantly better discovery than `nameof()` which surfaced every member.
+
+### Added — `.Default()` decorator
+
+- Any target can opt into being the default invocation target via `.Default()`, regardless of its name. Replaces the convention-based "target literally named `Default` or `Ci`" fallback as the canonical mechanism.
+- At most one target may be marked default per build (across partial-class files too — reflection collects them uniformly). Multiple defaults throw at startup with all names listed.
+- Name-based `Default`/`Ci` fallback preserved for back-compat when nothing is marked.
+
+### Reference
+
+Concision impact on the canonical Compile target:
+
+```csharp
+// 1.0.x (7 lines):
+Target Compile => _ => _
+    .TopLevel()
+    .DependsOn(nameof(Restore))
+    .Executes(() => DotNet.Build(s => s.SetProject(Solution.Path).SetConfiguration(Configuration)));
+
+// 1.1.0 (5 lines):
+Target Compile => _ => _
+    .DependsOn(Restore)
+    .Executes(() => DotNet.Build(s => s.SetProject(Solution.Path).SetConfiguration(Configuration)));
+```
+
+Total: 561 Tamp.Core tests green (up from 525) across net8/9/10.
+
+[1.1.0]: https://github.com/tamp-build/tamp/releases/tag/v1.1.0
+
 ## [1.0.10] — 2026-05-11
 
 ### Added — HoldFast trial wave 6 (TAM-127, Critical)

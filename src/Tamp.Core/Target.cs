@@ -41,14 +41,52 @@ public interface ITargetDefinition
     /// to-noise high.
     /// </summary>
     /// <remarks>
-    /// If no targets are marked, every target appears in listings — the
-    /// marker is opt-in, so existing builds continue to surface their
-    /// full target list unchanged.
+    /// **Deprecated in 1.1.0.** Targets are now listable + callable by default; this method
+    /// is a no-op kept for back-compat. Use <see cref="Internal"/> to opt out (hide from
+    /// listings AND prevent direct CLI invocation). The TAMP001 analyzer offers a code-fix
+    /// to delete this call.
     /// </remarks>
+    [Obsolete("Targets are listable + callable by default in Tamp.Core 1.1.0+. Call is a no-op; remove it. Use .Internal() to opt out.", error: false)]
     ITargetDefinition TopLevel();
 
-    // Dependencies (by target name; nameof(OtherTarget) is the recommended idiom)
+    /// <summary>
+    /// Mark this target as INTERNAL: hidden from <c>--list</c> AND NOT directly callable
+    /// from the CLI. Pure dependency-graph node — runs only as a dependency of another
+    /// target. Direct invocation (<c>dotnet tamp ThisTarget</c>) fails with a friendly
+    /// error listing which targets depend on it.
+    /// </summary>
+    /// <remarks>
+    /// Mutually exclusive with <see cref="Default"/> — combining them throws at startup.
+    /// If an Internal-marked target has no incoming dependency edges, a startup warning
+    /// notes that it will never run.
+    /// </remarks>
+    ITargetDefinition Internal();
+
+    /// <summary>
+    /// Mark this target as the default when <c>dotnet tamp</c> is invoked without
+    /// any target name. At most one target per build may be marked default; declaring
+    /// it on a second target throws <see cref="InvalidOperationException"/> at startup
+    /// with the list of marked-default targets. Mutually exclusive with <see cref="Internal"/>.
+    /// </summary>
+    /// <remarks>
+    /// When no target is marked <c>Default()</c>, Tamp falls back to a target literally
+    /// named <c>Default</c>, then one literally named <c>Ci</c>, then errors. The decorator
+    /// supersedes the name-based fallback, so a target named anything (<c>Compile</c>,
+    /// <c>Pack</c>, <c>All</c>) can be the default invocation target.
+    /// </remarks>
+    ITargetDefinition Default();
+
+    // Dependencies — string-typed (back-compat; users can pass `nameof(X)` or `"X"`).
     ITargetDefinition DependsOn(params string[] targetNames);
+
+    /// <summary>
+    /// Dependency by Target reference. The compiler captures the source expression
+    /// (e.g. <c>Restore</c>) and the framework records it as the dependency name.
+    /// No <c>nameof()</c>; IntelliSense filters to Target-typed members of the build class.
+    /// For multiple dependencies, chain: <c>.DependsOn(Restore).DependsOn(Compile)</c>.
+    /// </summary>
+    ITargetDefinition DependsOn(Target target,
+        [System.Runtime.CompilerServices.CallerArgumentExpression(nameof(target))] string? name = null);
 
     /// <summary>
     /// Order constraint: this target runs after <paramref name="targetNames"/>
@@ -56,25 +94,41 @@ public interface ITargetDefinition
     /// </summary>
     ITargetDefinition After(params string[] targetNames);
 
+    /// <summary>Target-typed equivalent. See <see cref="DependsOn(Target, string?)"/> for the convention.</summary>
+    ITargetDefinition After(Target target,
+        [System.Runtime.CompilerServices.CallerArgumentExpression(nameof(target))] string? name = null);
+
     /// <summary>
     /// Order constraint: this target runs before <paramref name="targetNames"/>
     /// when both happen to be in the plan. Does NOT pull them in.
     /// </summary>
     ITargetDefinition Before(params string[] targetNames);
 
+    /// <summary>Target-typed equivalent. See <see cref="DependsOn(Target, string?)"/> for the convention.</summary>
+    ITargetDefinition Before(Target target,
+        [System.Runtime.CompilerServices.CallerArgumentExpression(nameof(target))] string? name = null);
+
     /// <summary>
     /// Outgoing trigger: when this target runs, also pull in
-    /// <paramref name="targetNames"/>. Distinct from <see cref="DependsOn"/>
+    /// <paramref name="targetNames"/>. Distinct from <see cref="DependsOn(string[])"/>
     /// — triggers add downstream targets to the plan.
     /// </summary>
     ITargetDefinition Triggers(params string[] targetNames);
 
+    /// <summary>Target-typed equivalent. See <see cref="DependsOn(Target, string?)"/> for the convention.</summary>
+    ITargetDefinition Triggers(Target target,
+        [System.Runtime.CompilerServices.CallerArgumentExpression(nameof(target))] string? name = null);
+
     /// <summary>
     /// Incoming trigger: this target runs whenever any of
     /// <paramref name="targetNames"/> runs. Equivalent to declaring
-    /// <see cref="Triggers"/> on each of those targets.
+    /// <see cref="Triggers(string[])"/> on each of those targets.
     /// </summary>
     ITargetDefinition TriggeredBy(params string[] targetNames);
+
+    /// <summary>Target-typed equivalent. See <see cref="DependsOn(Target, string?)"/> for the convention.</summary>
+    ITargetDefinition TriggeredBy(Target target,
+        [System.Runtime.CompilerServices.CallerArgumentExpression(nameof(target))] string? name = null);
 
     /// <summary>
     /// Catch-style handler: this target runs only when one of
@@ -83,6 +137,10 @@ public interface ITargetDefinition
     /// not reverse the original failure's exit code.
     /// </summary>
     ITargetDefinition OnFailureOf(params string[] targetNames);
+
+    /// <summary>Target-typed equivalent. See <see cref="DependsOn(Target, string?)"/> for the convention.</summary>
+    ITargetDefinition OnFailureOf(Target target,
+        [System.Runtime.CompilerServices.CallerArgumentExpression(nameof(target))] string? name = null);
 
     /// <summary>
     /// Conditional skip. The <paramref name="expressionText"/> is captured
@@ -175,6 +233,8 @@ internal sealed class TargetDefinition : ITargetDefinition
     private PhaseDescriptor? _phaseDescriptor;
     private string? _description;
     private bool _topLevel;
+    private bool _isDefault;
+    private bool _isInternal;
     private bool _requiresNetwork;
     private bool _requiresDocker;
     private bool _requiresAdmin;
@@ -220,9 +280,27 @@ internal sealed class TargetDefinition : ITargetDefinition
         return this;
     }
 
+    public ITargetDefinition Default()
+    {
+        _isDefault = true;
+        return this;
+    }
+
+    public ITargetDefinition Internal()
+    {
+        _isInternal = true;
+        return this;
+    }
+
     public ITargetDefinition DependsOn(params string[] targetNames)
     {
         _dependencies.AddRange(targetNames);
+        return this;
+    }
+
+    public ITargetDefinition DependsOn(Target target, string? name = null)
+    {
+        _dependencies.Add(NormalizeCapturedTargetName(name, nameof(DependsOn)));
         return this;
     }
 
@@ -232,9 +310,21 @@ internal sealed class TargetDefinition : ITargetDefinition
         return this;
     }
 
+    public ITargetDefinition After(Target target, string? name = null)
+    {
+        _orderAfter.Add(NormalizeCapturedTargetName(name, nameof(After)));
+        return this;
+    }
+
     public ITargetDefinition Before(params string[] targetNames)
     {
         _orderBefore.AddRange(targetNames);
+        return this;
+    }
+
+    public ITargetDefinition Before(Target target, string? name = null)
+    {
+        _orderBefore.Add(NormalizeCapturedTargetName(name, nameof(Before)));
         return this;
     }
 
@@ -244,9 +334,21 @@ internal sealed class TargetDefinition : ITargetDefinition
         return this;
     }
 
+    public ITargetDefinition Triggers(Target target, string? name = null)
+    {
+        _triggers.Add(NormalizeCapturedTargetName(name, nameof(Triggers)));
+        return this;
+    }
+
     public ITargetDefinition TriggeredBy(params string[] targetNames)
     {
         _triggeredBy.AddRange(targetNames);
+        return this;
+    }
+
+    public ITargetDefinition TriggeredBy(Target target, string? name = null)
+    {
+        _triggeredBy.Add(NormalizeCapturedTargetName(name, nameof(TriggeredBy)));
         return this;
     }
 
@@ -254,6 +356,36 @@ internal sealed class TargetDefinition : ITargetDefinition
     {
         _onFailureOf.AddRange(targetNames);
         return this;
+    }
+
+    public ITargetDefinition OnFailureOf(Target target, string? name = null)
+    {
+        _onFailureOf.Add(NormalizeCapturedTargetName(name, nameof(OnFailureOf)));
+        return this;
+    }
+
+    private static readonly System.Text.RegularExpressions.Regex SimpleIdentifier
+        = new(@"^[A-Za-z_][A-Za-z0-9_]*$", System.Text.RegularExpressions.RegexOptions.Compiled);
+
+    /// <summary>
+    /// Validates and normalizes a CallerArgumentExpression-captured target reference.
+    /// Strips a leading <c>this.</c> prefix; accepts only simple identifiers.
+    /// </summary>
+    internal static string NormalizeCapturedTargetName(string? expression, string callingMethod)
+    {
+        if (string.IsNullOrWhiteSpace(expression))
+            throw new ArgumentException(
+                $"{callingMethod}() requires a Target expression like '{callingMethod}(Restore)'.",
+                "target");
+        var trimmed = expression.Trim();
+        if (trimmed.StartsWith("this.", StringComparison.Ordinal))
+            trimmed = trimmed.Substring(5);
+        if (!SimpleIdentifier.IsMatch(trimmed))
+            throw new ArgumentException(
+                $"{callingMethod}() expects a simple target reference like 'Restore', got '{expression}'. " +
+                "Use the (string[]) overload for computed names.",
+                "target");
+        return trimmed;
     }
 
     public ITargetDefinition OnlyWhen(
@@ -355,6 +487,8 @@ internal sealed class TargetDefinition : ITargetDefinition
         PhaseDescriptor = _phaseDescriptor,
         Description = _description,
         TopLevel = _topLevel,
+        IsDefault = _isDefault,
+        IsInternal = _isInternal,
         Tags = _tags.ToArray(),
         Dependencies = _dependencies.ToArray(),
         OrderAfter = _orderAfter.ToArray(),
@@ -401,6 +535,8 @@ public sealed record TargetSpec
     public PhaseDescriptor? PhaseDescriptor { get; init; }
     public string? Description { get; init; }
     public bool TopLevel { get; init; }
+    public bool IsDefault { get; init; }
+    public bool IsInternal { get; init; }
     public IReadOnlyList<string> Tags { get; init; } = Array.Empty<string>();
     public IReadOnlyList<string> Dependencies { get; init; } = Array.Empty<string>();
     public IReadOnlyList<string> OrderAfter { get; init; } = Array.Empty<string>();

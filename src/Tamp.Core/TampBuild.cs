@@ -250,6 +250,48 @@ public abstract partial class TampBuild
             SecretBinder.Bind(build, Environment.GetEnvironmentVariable, RegisterSecretForCiMasking);
 
             var targets = CollectTargets(build);
+            // Single-default invariant: at most one target across the entire build class (including
+            // any partial-class files) may carry `.Default()`. Reflection collects targets from all
+            // files uniformly, so this check is naturally file-layout-independent.
+            var markedDefaults = targets.Values.Where(t => t.IsDefault).Select(t => t.Name).ToList();
+            if (markedDefaults.Count > 1)
+            {
+                Console.Error.WriteLine(
+                    $"Multiple targets are marked `.Default()`: {string.Join(", ", markedDefaults)}. " +
+                    "Exactly one target may be the default. Remove `.Default()` from all but one.");
+                return 2;
+            }
+
+            // Internal + Default mutual exclusion.
+            var defaultAndInternal = targets.Values
+                .Where(t => t.IsDefault && t.IsInternal)
+                .Select(t => t.Name)
+                .ToList();
+            if (defaultAndInternal.Count > 0)
+            {
+                foreach (var name in defaultAndInternal)
+                    Console.Error.WriteLine(
+                        $"Target '{name}' is marked both Internal and Default — pick one. " +
+                        "Internal means non-callable; Default means runs when no target is given.");
+                return 2;
+            }
+
+            // Stranded-internal warning: Internal target with no incoming dependency edges
+            // and nothing else wiring it in. It will never run.
+            foreach (var target in targets.Values.Where(t => t.IsInternal))
+            {
+                var incoming = targets.Values
+                    .Any(other => other.Dependencies.Contains(target.Name)
+                               || other.Triggers.Contains(target.Name)
+                               || other.OrderBefore.Contains(target.Name));
+                if (!incoming)
+                {
+                    Console.Error.WriteLine(
+                        $"warning: Target '{target.Name}' is marked Internal but nothing depends on it. " +
+                        "It will never run. Either wire it as a DependsOn of another target, or remove .Internal() if it's meant to be callable.");
+                }
+            }
+
             var graph = new TargetGraph(targets);
 
             var (mode, targetNames, listMode, showAll, verbosity) = ParseInvocation(args, targets);
@@ -267,9 +309,33 @@ public abstract partial class TampBuild
 
             if (targetNames.Count == 0)
             {
-                Console.Error.WriteLine("No target specified and no `Default` or `Ci` target found.");
-                Console.Error.WriteLine("Use `--list` to see available targets.");
+                Console.Error.WriteLine("No target specified and no `.Default()`-marked target, `Default`-named target, or `Ci`-named target found.");
+                Console.Error.WriteLine("Mark one target with `.Default()` or pass a target name. Use `--list` to see available targets.");
                 return 2;
+            }
+
+            // Refuse direct invocation of Internal targets with a friendly error.
+            foreach (var requested in targetNames)
+            {
+                if (targets.TryGetValue(requested, out var spec) && spec.IsInternal)
+                {
+                    var dependents = targets.Values
+                        .Where(t => t.Dependencies.Contains(requested)
+                                 || t.Triggers.Contains(requested)
+                                 || t.OrderBefore.Contains(requested))
+                        .Select(t => t.Name)
+                        .ToList();
+                    Console.Error.WriteLine($"tamp: Target '{requested}' is internal — not directly callable.");
+                    if (dependents.Count > 0)
+                        Console.Error.WriteLine(
+                            $"      It runs as a dependency of: {string.Join(", ", dependents)}.");
+                    else
+                        Console.Error.WriteLine(
+                            "      Nothing depends on it. Either wire it as a dependency or remove .Internal() to expose it.");
+                    Console.Error.WriteLine(
+                        "      Call one of those targets, or remove .Internal() from its definition.");
+                    return 2;
+                }
             }
 
             PrintBanner(Console.Out);
@@ -345,7 +411,12 @@ public abstract partial class TampBuild
 
         if (targetNames.Count == 0 && listMode is ListMode.None)
         {
-            if (targets.ContainsKey("Default")) targetNames.Add("Default");
+            // Precedence: .Default()-marked target wins, then name-based fallback for
+            // back-compat (`Default` then `Ci`). Uniqueness of the marked default is
+            // already enforced upstream in Execute<T>.
+            var marked = targets.Values.FirstOrDefault(t => t.IsDefault);
+            if (marked is not null) targetNames.Add(marked.Name);
+            else if (targets.ContainsKey("Default")) targetNames.Add("Default");
             else if (targets.ContainsKey("Ci")) targetNames.Add("Ci");
         }
 
@@ -372,19 +443,18 @@ public abstract partial class TampBuild
             return;
         }
 
-        // If any target is marked TopLevel, the default listing is just
-        // those — pass --all to see everything. If none are marked, every
-        // target appears (no breaking change for builds that haven't
-        // adopted the marker).
-        var hasTopLevel = targets.Values.Any(t => t.TopLevel);
-        var visible = (hasTopLevel && !showAll)
-            ? targets.Values.Where(t => t.TopLevel)
-            : targets.Values;
+        // 1.1.0+: targets are listable + callable by default. `.Internal()` opts out —
+        // hides from `--list` AND prevents direct CLI invocation. Pass `--all` to reveal
+        // internal targets in the listing. The legacy `.TopLevel()` decorator is a no-op
+        // kept for back-compat; it no longer affects listing.
+        var visible = showAll
+            ? targets.Values
+            : targets.Values.Where(t => !t.IsInternal);
 
         var sorted = visible.OrderBy(t => t.Name, StringComparer.Ordinal).ToList();
         if (sorted.Count == 0)
         {
-            Console.WriteLine("(no top-level targets; pass --all to see internals)");
+            Console.WriteLine("(every target is marked Internal; pass --all to show)");
             return;
         }
 
@@ -392,16 +462,16 @@ public abstract partial class TampBuild
         {
             var phase = t.Phase == Phase.None ? string.Empty : $" [{t.Phase}]";
             var desc = string.IsNullOrEmpty(t.Description) ? string.Empty : $"  — {t.Description}";
-            var marker = (showAll && hasTopLevel && !t.TopLevel) ? " (internal)" : string.Empty;
+            var marker = (showAll && t.IsInternal) ? " (internal)" : string.Empty;
             Console.WriteLine($"{t.Name}{phase}{marker}{desc}");
             if (tree && t.Dependencies.Count > 0)
                 foreach (var dep in t.Dependencies)
                     Console.WriteLine($"    depends on: {dep}");
         }
 
-        if (hasTopLevel && !showAll)
+        if (!showAll)
         {
-            var hidden = targets.Values.Count(t => !t.TopLevel);
+            var hidden = targets.Values.Count(t => t.IsInternal);
             if (hidden > 0)
             {
                 Console.WriteLine();
