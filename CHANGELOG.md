@@ -8,6 +8,21 @@ Pre-1.0 versions may break public API freely between minor versions; the `0.x` l
 
 ## [Unreleased]
 
+## [1.0.8] — 2026-05-11
+
+### Added — HoldFast trial wave 1 (TAM-108, 109, 113, 115, 116)
+
+- **`[FromPath("name")]` attribute + `Tool.FromPath()` / `Tool.TryFromPath()` factories (TAM-115).** Resolve native executables on `PATH` with Windows extension probing (`.cmd / .exe / .bat / .ps1 / no-ext`). `Optional = true` injects null when missing instead of throwing. Closes the Yarn / Turbo / Docker / git native-tool gap — previously every consumer hand-rolled 25 lines of `ResolveOnPath` boilerplate.
+- **`[FromNodeModules("name")]` attribute + `Tool.FromNodeModules()` / `Tool.TryFromNodeModules()` factories (TAM-116).** Resolve tools installed as workspace devDeps under `<projectRoot>/node_modules/.bin/<name>`. On Windows probes the `.cmd` shim first. `ProjectRoot` defaults to `TampBuild.RootDirectory`; override for nested workspaces. Pair with a `Yarn.Install`-DependsOn so the resolution runs after install. Error message includes a `yarn install` hint when the binary isn't present.
+- **`[Solution]` positional ctor (TAM-109).** `[Solution("src/dotnet/Foo.slnx")]` now compiles and matches `[Solution(Path = "src/dotnet/Foo.slnx")]`. Friction-#3 DWIM-fix.
+- **`[Solution]` subtree discovery (TAM-108).** When no `.slnx`/`.sln` lives at `RootDirectory`, walks the subtree (skipping `node_modules`, `bin`, `obj`, `.git`, `artifacts`, `.vs`, `.idea`, `TestResults`). A single subtree match auto-resolves; multiple matches throw a helpful error listing candidates and pointing at `[Solution("...")]` as the fix. Monorepo-friendly.
+
+### Fixed
+
+- **`AbsolutePath.GlobDirectories("**/bin")` returning 0 hits (TAM-113).** The underlying `Microsoft.Extensions.FileSystemGlobbing.Matcher` is file-oriented — `**/bin` returned nothing because no FILE was literally named `bin`. Rewrote to walk every directory and test each relative path against the matcher. `"**/bin"`, `"**/obj"`, `"*/bin"` (top-level only), and overlapping-pattern dedupe all behave as a build-script consumer would expect.
+
+[1.0.8]: https://github.com/tamp-build/tamp/releases/tag/v1.0.8
+
 ## [1.0.7] — 2026-05-11
 
 ### Added

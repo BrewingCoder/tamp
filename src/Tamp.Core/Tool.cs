@@ -38,4 +38,72 @@ public sealed class Tool
             Arguments = arguments.ToList(),
             WorkingDirectory = WorkingDirectory,
         };
+
+    /// <summary>
+    /// Resolve a native executable on <c>PATH</c>. On Windows, probes <c>.cmd</c>, <c>.exe</c>,
+    /// <c>.bat</c>, <c>.ps1</c>, and the extension-less name (in that order). Returns null when not found.
+    /// </summary>
+    /// <param name="name">Executable name without extension (e.g. <c>"yarn"</c>, <c>"docker"</c>, <c>"git"</c>).</param>
+    /// <param name="workingDirectory">Optional default working directory for plans built from the returned Tool.</param>
+    public static Tool? TryFromPath(string name, string? workingDirectory = null)
+    {
+        if (string.IsNullOrWhiteSpace(name)) throw new ArgumentException("Tool name must not be null or whitespace.", nameof(name));
+
+        var pathEnv = Environment.GetEnvironmentVariable("PATH") ?? "";
+        var sep = OperatingSystem.IsWindows() ? ';' : ':';
+        var extensions = OperatingSystem.IsWindows()
+            ? new[] { ".cmd", ".exe", ".bat", ".ps1", "" }
+            : new[] { "" };
+
+        foreach (var dir in pathEnv.Split(sep, StringSplitOptions.RemoveEmptyEntries))
+        {
+            foreach (var ext in extensions)
+            {
+                var candidate = Path.Combine(dir.Trim('"'), name + ext);
+                if (File.Exists(candidate))
+                    return new Tool(AbsolutePath.Create(candidate), workingDirectory);
+            }
+        }
+        return null;
+    }
+
+    /// <summary>
+    /// Resolve a native executable on <c>PATH</c>, or throw <see cref="InvalidOperationException"/> when not found.
+    /// </summary>
+    public static Tool FromPath(string name, string? workingDirectory = null)
+        => TryFromPath(name, workingDirectory)
+           ?? throw new InvalidOperationException(
+               $"Could not find '{name}' on PATH. Install it and ensure the install directory is on PATH.");
+
+    /// <summary>
+    /// Resolve a tool installed under <c>&lt;projectRoot&gt;/node_modules/.bin/&lt;name&gt;</c>.
+    /// On Windows, probes the <c>.cmd</c> shim first, then the bare name. Returns null when not found.
+    /// </summary>
+    public static Tool? TryFromNodeModules(string name, AbsolutePath projectRoot, string? workingDirectory = null)
+    {
+        if (string.IsNullOrWhiteSpace(name)) throw new ArgumentException("Tool name must not be null or whitespace.", nameof(name));
+        if (projectRoot is null) throw new ArgumentNullException(nameof(projectRoot));
+
+        var binDir = projectRoot / "node_modules" / ".bin";
+        var extensions = OperatingSystem.IsWindows()
+            ? new[] { ".cmd", ".exe", "" }
+            : new[] { "" };
+
+        foreach (var ext in extensions)
+        {
+            var candidate = (binDir / (name + ext)).Value;
+            if (File.Exists(candidate))
+                return new Tool(AbsolutePath.Create(candidate), workingDirectory ?? projectRoot.Value);
+        }
+        return null;
+    }
+
+    /// <summary>
+    /// Resolve a tool from <c>node_modules/.bin/</c>, or throw <see cref="InvalidOperationException"/>.
+    /// Common workflow: pair with <c>Yarn.Install</c> via <c>DependsOn</c> so the resolution runs after install.
+    /// </summary>
+    public static Tool FromNodeModules(string name, AbsolutePath projectRoot, string? workingDirectory = null)
+        => TryFromNodeModules(name, projectRoot, workingDirectory)
+           ?? throw new InvalidOperationException(
+               $"Could not find '{name}' under {projectRoot / "node_modules" / ".bin"}. Did you run `yarn install` (or `npm install`)?");
 }

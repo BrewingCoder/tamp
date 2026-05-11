@@ -25,6 +25,115 @@ public sealed class SolutionTests : IDisposable
         return AbsolutePath.Create(p);
     }
 
+    private AbsolutePath ScratchRoot() => AbsolutePath.Create(_scratch);
+
+    // ---- [Solution] attribute discovery (TAM-108, TAM-109) ----
+
+    [Fact]
+    public void Attribute_Positional_Ctor_Sets_Path()
+    {
+        var attr = new SolutionAttribute("src/dotnet/Foo.slnx");
+        Assert.Equal("src/dotnet/Foo.slnx", attr.Path);
+    }
+
+    [Fact]
+    public void Attribute_Positional_Ctor_Rejects_Empty()
+    {
+        Assert.Throws<ArgumentException>(() => new SolutionAttribute(""));
+        Assert.Throws<ArgumentException>(() => new SolutionAttribute("   "));
+    }
+
+    [Fact]
+    public void Attribute_Explicit_Path_Wins_Over_Discovery()
+    {
+        Write("Foo.slnx", "<Solution />");                 // top-level decoy
+        Write("nested/Bar.slnx", "<Solution />");         // target
+        var attr = new SolutionAttribute("nested/Bar.slnx");
+        var located = attr.LocateSolutionFor(ScratchRoot());
+        Assert.EndsWith("Bar.slnx", located.Value);
+    }
+
+    [Fact]
+    public void Attribute_Explicit_Missing_Path_Throws_With_Helpful_Message()
+    {
+        var attr = new SolutionAttribute("does-not-exist.slnx");
+        var ex = Assert.Throws<InvalidOperationException>(() => attr.LocateSolutionFor(ScratchRoot()));
+        Assert.Contains("does-not-exist.slnx", ex.Message);
+        Assert.Contains("file does not exist", ex.Message);
+    }
+
+    [Fact]
+    public void Attribute_Discovers_Solution_At_Root()
+    {
+        Write("Foo.slnx", "<Solution />");
+        var attr = new SolutionAttribute();
+        var located = attr.LocateSolutionFor(ScratchRoot());
+        Assert.EndsWith("Foo.slnx", located.Value);
+    }
+
+    [Fact]
+    public void Attribute_Discovers_Single_Solution_In_Subtree()
+    {
+        // TAM-108 — monorepo with one solution under src/dotnet/.
+        Write("src/dotnet/HoldFast.Backend.slnx", "<Solution />");
+        var attr = new SolutionAttribute();
+        var located = attr.LocateSolutionFor(ScratchRoot());
+        Assert.EndsWith("HoldFast.Backend.slnx", located.Value);
+    }
+
+    [Fact]
+    public void Attribute_Skips_node_modules_bin_obj_During_Subtree_Search()
+    {
+        // Performance / correctness: don't descend into the noise. A solution buried in
+        // node_modules/ would NOT match — the consumer can still set Path explicitly.
+        Write("node_modules/some-package/Buried.slnx", "<Solution />");
+        Write("bin/Release/Buried.slnx", "<Solution />");
+        Write("src/Real.slnx", "<Solution />");
+        var attr = new SolutionAttribute();
+        var located = attr.LocateSolutionFor(ScratchRoot());
+        Assert.EndsWith("Real.slnx", located.Value);
+    }
+
+    [Fact]
+    public void Attribute_Ambiguous_Subtree_Match_Throws_With_Candidates()
+    {
+        Write("src/A.slnx", "<Solution />");
+        Write("other/B.slnx", "<Solution />");
+        var attr = new SolutionAttribute();
+        var ex = Assert.Throws<InvalidOperationException>(() => attr.LocateSolutionFor(ScratchRoot()));
+        Assert.Contains("multiple solution files", ex.Message);
+        Assert.Contains("A.slnx", ex.Message);
+        Assert.Contains("B.slnx", ex.Message);
+        Assert.Contains("[Solution(\"", ex.Message);  // points at positional ctor in fix-it hint
+    }
+
+    [Fact]
+    public void Attribute_No_Solution_Anywhere_Throws_With_Install_Hint()
+    {
+        var attr = new SolutionAttribute();
+        var ex = Assert.Throws<InvalidOperationException>(() => attr.LocateSolutionFor(ScratchRoot()));
+        Assert.Contains("could not locate any .slnx", ex.Message);
+    }
+
+    [Fact]
+    public void Attribute_Top_Level_Wins_Over_Subtree()
+    {
+        Write("Foo.slnx", "<Solution />");
+        Write("src/dotnet/Bar.slnx", "<Solution />");
+        var attr = new SolutionAttribute();
+        var located = attr.LocateSolutionFor(ScratchRoot());
+        Assert.EndsWith("Foo.slnx", located.Value);
+    }
+
+    [Fact]
+    public void Attribute_Mixed_slnx_And_sln_In_Subtree_Both_Counted()
+    {
+        Write("src/dotnet/Foo.sln", "Project");
+        var attr = new SolutionAttribute();
+        var located = attr.LocateSolutionFor(ScratchRoot());
+        Assert.EndsWith("Foo.sln", located.Value);
+    }
+
     // ---- .slnx ----
 
     [Fact]

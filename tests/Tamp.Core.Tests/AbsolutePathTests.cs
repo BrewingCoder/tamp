@@ -284,4 +284,98 @@ public sealed class AbsolutePathTests : IDisposable
     {
         Assert.Empty(P("nonexistent").GlobFiles("**/*"));
     }
+
+    // ---- GlobDirectories (TAM-113) ----
+
+    private void MkDir(string rel) => Directory.CreateDirectory(Path.Combine(_scratch, rel));
+    private void MkFile(string rel)
+    {
+        var full = Path.Combine(_scratch, rel);
+        Directory.CreateDirectory(Path.GetDirectoryName(full)!);
+        File.WriteAllText(full, "x");
+    }
+
+    [Fact]
+    public void GlobDirectories_StarStar_Slash_Name_Matches_All_Depths()
+    {
+        // TAM-113: `**/bin` must match `bin` directories at any depth, not zero.
+        MkDir("Foo/bin");
+        MkDir("Foo/obj");
+        MkDir("Foo/nested/bin");
+        MkDir("Bar/bin");
+        MkFile("Foo/bin/Foo.dll");
+
+        var dir = AbsolutePath.Create(_scratch);
+        var dirs = dir.GlobDirectories("**/bin").Select(p => p.Name).OrderBy(n => n).ToList();
+
+        Assert.Contains("bin", dirs);
+        // 3 bin directories total (Foo/bin, Foo/nested/bin, Bar/bin), all named "bin"
+        Assert.Equal(3, dirs.Count);
+    }
+
+    [Fact]
+    public void GlobDirectories_Multiple_Patterns_Unioned()
+    {
+        MkDir("Foo/bin");
+        MkDir("Foo/obj");
+        MkDir("Bar/bin");
+        MkDir("Bar/obj");
+        MkDir("Baz/src");
+
+        var dir = AbsolutePath.Create(_scratch);
+        var dirs = dir.GlobDirectories("**/bin", "**/obj").ToList();
+
+        Assert.Equal(4, dirs.Count);  // Foo/bin, Foo/obj, Bar/bin, Bar/obj
+    }
+
+    [Fact]
+    public void GlobDirectories_Star_Slash_Only_Matches_Top_Level()
+    {
+        MkDir("topbin");
+        MkDir("Foo/bin");
+        MkDir("Foo/topbin");
+
+        var dir = AbsolutePath.Create(_scratch);
+        // `*/topbin` matches only one-level-deep — Foo/topbin matches, topbin (root) does not.
+        var dirs = dir.GlobDirectories("*/topbin").Select(p => p.Name).ToList();
+
+        Assert.Single(dirs);
+        Assert.Equal("topbin", dirs[0]);
+    }
+
+    [Fact]
+    public void GlobDirectories_No_Matches_Returns_Empty()
+    {
+        MkDir("Foo/src");
+        var dir = AbsolutePath.Create(_scratch);
+        Assert.Empty(dir.GlobDirectories("**/never-matches"));
+    }
+
+    [Fact]
+    public void GlobDirectories_Result_Paths_Are_Absolute_And_Real()
+    {
+        MkDir("Foo/bin");
+        var dir = AbsolutePath.Create(_scratch);
+        var dirs = dir.GlobDirectories("**/bin");
+
+        Assert.Single(dirs);
+        Assert.True(Path.IsPathRooted(dirs[0].Value));
+        Assert.True(Directory.Exists(dirs[0].Value));
+    }
+
+    [Fact]
+    public void GlobDirectories_On_Missing_Directory_Is_Empty()
+    {
+        Assert.Empty(P("nonexistent").GlobDirectories("**/*"));
+    }
+
+    [Fact]
+    public void GlobDirectories_Deduplicates()
+    {
+        MkDir("Foo/bin");
+        var dir = AbsolutePath.Create(_scratch);
+        // Two overlapping patterns both match the same directory.
+        var dirs = dir.GlobDirectories("**/bin", "Foo/bin").ToList();
+        Assert.Single(dirs);
+    }
 }

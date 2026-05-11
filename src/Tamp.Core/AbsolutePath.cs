@@ -228,19 +228,27 @@ public sealed record AbsolutePath
             .Distinct().ToList();
     }
 
-    /// <summary>Glob directories relative to this directory.</summary>
+    /// <summary>
+    /// Glob directories relative to this directory. Patterns target directory paths directly —
+    /// <c>"**/bin"</c> matches every <c>bin/</c> directory at any depth, <c>"*/obj"</c> matches
+    /// only top-level <c>obj/</c> subtrees.
+    /// </summary>
+    /// <remarks>
+    /// Microsoft.Extensions.FileSystemGlobbing's <c>Matcher</c> is file-oriented — <c>GetResultsInFullPath</c>
+    /// against pattern <c>"**/bin"</c> returns no hits because nothing in the tree is a FILE literally named
+    /// <c>bin</c>. We walk every directory and test each one's relative path against the matcher instead.
+    /// </remarks>
     public IReadOnlyList<AbsolutePath> GlobDirectories(params string[] patterns)
     {
         if (!DirectoryExists()) return Array.Empty<AbsolutePath>();
-        var seen = new HashSet<string>(StringComparer.Ordinal);
         var matcher = new Matcher();
         foreach (var p in patterns) matcher.AddInclude(p);
-        // The globbing library is file-oriented; project file results to
-        // their containing directories, dedupe.
-        foreach (var f in matcher.GetResultsInFullPath(Value))
+
+        var seen = new HashSet<string>(StringComparer.Ordinal);
+        foreach (var dir in Directory.EnumerateDirectories(Value, "*", SearchOption.AllDirectories))
         {
-            var dir = Path.GetDirectoryName(f);
-            if (dir is not null) seen.Add(dir);
+            var rel = Path.GetRelativePath(Value, dir).Replace(Path.DirectorySeparatorChar, '/');
+            if (matcher.Match(rel).HasMatches) seen.Add(dir);
         }
         return seen.Select(d => new AbsolutePath(d)).ToList();
     }
