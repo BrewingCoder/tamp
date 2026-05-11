@@ -8,25 +8,30 @@ A small-core, plugin-driven build automation framework for .NET 10 and beyond. C
 
 ## Status
 
-**Tamp.Core 1.0.0 shipped 2026-05-10.** API is stable; satellite repos pin against it via `PackageReference`.
+**Tamp.Core 1.0.3 shipped 2026-05-10.** API is stable; the `Tamp.*` NuGet prefix is reserved to the project. 14 satellite packages are live on nuget.org and pin against core via `PackageReference`.
 
 | Package family | Repo | Latest |
 |---|---|---|
-| `Tamp.Core` / `Tamp.Cli` / `dotnet-tamp` | this repo (`tamp`) | **1.0.0** |
-| `Tamp.NetCli.V8` / `V9` / `V10` | this repo | **1.0.0** |
-| `Tamp.DotNetCoverage.V18` | this repo | **1.0.0** |
-| `Tamp.Docker.V27` | [`tamp-docker`](https://github.com/tamp-build/tamp-docker) | preview |
-| `Tamp.SonarScanner.V10` / `SonarScannerCli.V6` | [`tamp-sonar`](https://github.com/tamp-build/tamp-sonar) | preview |
-| `Tamp.EFCore.V8` / `V9` / `V10` | [`tamp-ef`](https://github.com/tamp-build/tamp-ef) | preview |
+| `Tamp.Core` / `Tamp.Cli` / `dotnet-tamp` | this repo (`tamp`) | **1.0.3** |
+| `Tamp.NetCli.V8` / `V9` / `V10` | this repo | **1.0.3** |
+| `Tamp.DotNetCoverage.V18` | this repo | **1.0.3** |
+| `Tamp.Docker.V27` | [`tamp-docker`](https://github.com/tamp-build/tamp-docker) | **0.2.0** |
+| `Tamp.SonarScanner.V10` / `SonarScannerCli.V6` | [`tamp-sonar`](https://github.com/tamp-build/tamp-sonar) | **0.1.0** |
+| `Tamp.EFCore.V8` / `V9` / `V10` | [`tamp-ef`](https://github.com/tamp-build/tamp-ef) | **0.1.0** |
 | `Tamp.GitVersion.V6` | [`tamp-gitversion`](https://github.com/tamp-build/tamp-gitversion) | **0.1.0** |
-| `Tamp.ReportGenerator.V5` | [`tamp-reportgenerator`](https://github.com/tamp-build/tamp-reportgenerator) | preview |
+| `Tamp.ReportGenerator.V5` | [`tamp-reportgenerator`](https://github.com/tamp-build/tamp-reportgenerator) | **0.1.0** |
 | `Tamp.GitHubCli.V2` | [`tamp-gh`](https://github.com/tamp-build/tamp-gh) | **0.1.0** |
+| `Tamp.Yarn.V4` | [`tamp-yarn`](https://github.com/tamp-build/tamp-yarn) | **0.1.0** |
+| `Tamp.Turbo.V2` | [`tamp-turbo`](https://github.com/tamp-build/tamp-turbo) | **0.1.0** |
+| `Tamp.GraphQLCodegen.V5` | [`tamp-graphql-codegen`](https://github.com/tamp-build/tamp-graphql-codegen) | **0.1.0** |
+| `Tamp.Vite.V5` (Vite + Vitest) | [`tamp-vite`](https://github.com/tamp-build/tamp-vite) | **0.1.0** |
+| `Tamp.Playwright.V1` | [`tamp-playwright`](https://github.com/tamp-build/tamp-playwright) | **0.1.0** |
+| `Tamp.TruffleHog.V3` | [`tamp-trufflehog`](https://github.com/tamp-build/tamp-trufflehog) | **0.1.0** |
+| `Tamp.CodeQL.V2` | [`tamp-codeql`](https://github.com/tamp-build/tamp-codeql) | **0.1.0** |
 
-Third-party tool wrappers ship from satellite repos so each tool's release cadence (Docker every 2 weeks, EF every couple months, gh every couple weeks) doesn't gate Tamp core releases. Same `PackageReference` story for the consumer; different release schedules for the maintainer.
+Third-party tool wrappers ship from satellite repos so each tool's release cadence (Docker every 2 weeks, Vite every quarter, Playwright every 4–6 weeks, etc.) doesn't gate Tamp core releases. Same `PackageReference` story for the consumer; different release schedules for the maintainer.
 
-The `Tamp.GitVersion.V6 0.1.0` and `Tamp.GitHubCli.V2 0.1.0` releases shipped through **Tamp itself** — `dotnet tamp Ci && dotnet tamp Push` running in the satellite repos' CI, dogfooding the framework end-to-end. See those repos' `build/Build.cs` and `.github/workflows/release.yml` for the pattern.
-
-**Known v1.0.0 gap:** the `[Secret]` env-var resolver isn't wired in `ParameterBinder` ([TAM-78](https://github.com/tamp-build/tamp/issues), 1.0.1 patch). Until then, build scripts read sensitive env vars manually and construct `Secret(...)` directly — the workaround is one helper line, see satellite README quick-examples.
+All satellites ship through **Tamp itself** — `dotnet tamp Ci && dotnet tamp Push` running in the satellite repos' CI, dogfooding the framework end-to-end. See any satellite's `build/Build.cs` and `.github/workflows/release.yml` for the pattern.
 
 ---
 
@@ -512,20 +517,22 @@ Schemas (the source-of-truth for what flags exist, their types, defaults, mutex 
 - `Tamp.NetCli.V8` / `V9` / `V10` covering the dotnet CLI subset needed for real pipelines
 - Tamp self-hosts; the `tamp` repo's own `build/Build.cs` drives its `Ci` / `Coverage` targets via Tamp
 
-### v1 — Real-world coverage ✅ (shipping)
+### v1 — Real-world coverage ✅ (shipped)
 
-- `Tamp.Core 1.0.0` shipped 2026-05-10 with the API contract that satellites pin against
-- Tier-1 tooling shipped: `Tamp.NetCli.V*` (`Format` verbs added), `Tamp.DotNetCoverage.V18`, `Tamp.Docker.V27`, `Tamp.SonarScanner.V10` / `SonarScannerCli.V6`, `Tamp.EFCore.V8` / `V9` / `V10`, `Tamp.GitVersion.V6`, `Tamp.ReportGenerator.V5`, `Tamp.GitHubCli.V2`
-- Satellite-repo split per the convention: third-party tool wrappers live outside `tamp` core
-- Dogfood release pipeline validated: `tamp-gitversion 0.1.0` and `tamp-gh 0.1.0` shipped through `dotnet tamp Ci` running in their own GitHub Actions
+- `Tamp.Core 1.0.0 → 1.0.3` shipped 2026-05-10. API contract is what satellites pin against.
+- **`Tamp.*` NuGet prefix reserved** (confirmed by NuGet support 2026-05-10).
+- Tier-1 .NET tooling (in `tamp` core repo): `Tamp.NetCli.V8` / `V9` / `V10` (`Format` verbs added), `Tamp.DotNetCoverage.V18`.
+- Tier-1 satellite tooling: `Tamp.Docker.V27` (compose + buildx in 0.2.0), `Tamp.SonarScanner.V10` / `SonarScannerCli.V6`, `Tamp.EFCore.V8` / `V9` / `V10`, `Tamp.GitVersion.V6`, `Tamp.ReportGenerator.V5`, `Tamp.GitHubCli.V2`.
+- HoldFast wrapper sprint (TAM-85 through TAM-92): `Tamp.Yarn.V4`, `Tamp.Turbo.V2`, `Tamp.GraphQLCodegen.V5`, `Tamp.Vite.V5` (Vite + Vitest), `Tamp.Playwright.V1`, `Tamp.TruffleHog.V3`, `Tamp.CodeQL.V2`.
+- **`[Secret]` resolution chain** (TAM-78 / TAM-79 / TAM-83) — CI vendor masking, env var, OS keychain (macOS `security`, Linux `secret-tool`, Windows `Advapi32`), interactive prompt.
+- **CI safety net**: 3-OS matrix (ubuntu/windows/macos) × net8/9/10 on every satellite. Release workflow refuses to pack + push if the commit's CI hasn't passed (TAM-84). Branch protection on `main` requires all three OS legs green before merge.
+- Dogfood release pipeline validated end-to-end: every satellite ships through `dotnet tamp Ci && dotnet tamp Push` running in its own GitHub Actions.
 
 ### v1.x — Patch + ecosystem fill
 
-- **TAM-78** — wire `[Secret]` env-var resolution into `ParameterBinder` (1.0.1)
-- **TAM-79** — full `[Secret]` resolution chain: CI vendor store, OS keychain, env, interactive prompt
 - ADR backfill (TAM-78 → ADR series 0003/0004/0005/0008/0010-0014 already drafted, need to land)
-- HoldFast pipeline port — first external (non-Tamp) project on Tamp
-- Wiki sweep across all satellite repos
+- HoldFast pipeline port (TAM-93) — first external (non-Tamp) project on Tamp; owned by the holdfast agent
+- Per-wrapper wiki page sweep
 
 ### v2 — Adoption
 

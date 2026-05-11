@@ -47,7 +47,7 @@ Every load-bearing design choice is recorded as an ADR. Read these before propos
 
 ## Releases
 
-The current pre-launch placeholder is `0.0.1-alpha` — see the [changelog ↗](https://github.com/tamp-build/tamp/blob/main/CHANGELOG.md) for what's published. The first stable release lands once the v0 walking skeleton is dogfooded against a real consumer build (TAM-34) and Microsoft confirms the `Tamp.*` prefix reservation (TAM-40).
+`Tamp.Core 1.0.3` is live, the `Tamp.*` NuGet prefix is reserved to the project, and 14 satellite packages are shipping. See the [changelog ↗](https://github.com/tamp-build/tamp/blob/main/CHANGELOG.md) and the [main README ↗](https://github.com/tamp-build/tamp#readme) for the current package matrix.
 
 ## Project meta
 
