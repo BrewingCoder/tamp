@@ -298,7 +298,7 @@ public sealed class DotNetTests
     [Fact]
     public void NuGetPush_Throws_On_Null_Configurer()
     {
-        Assert.Throws<ArgumentNullException>(() => DotNet.NuGetPush(null!));
+        Assert.Throws<ArgumentNullException>(() => DotNet.NuGetPush((Action<DotNetNuGetPushSettings>)null!));
     }
 
     [Fact]
@@ -740,5 +740,71 @@ public sealed class DotNetTests
         Assert.False(DotNetTestSettings.IsSolutionProject("Foo.csproj"));
         Assert.False(DotNetTestSettings.IsSolutionProject(null));
         Assert.False(DotNetTestSettings.IsSolutionProject(""));
+    }
+
+    // ---- Object-init overloads (TAM-161, 1.2.0+) ----
+
+    [Fact]
+    public void Build_ObjectInit_Emits_Identical_Plan_To_Fluent()
+    {
+        var fluent = DotNet.Build(s => s
+            .SetProject("./Foo.csproj")
+            .SetConfiguration(Configuration.Release)
+            .SetNoRestore(true));
+
+        var objectInit = DotNet.Build(new DotNetBuildSettings
+        {
+            Project = "./Foo.csproj",
+            Configuration = Configuration.Release,
+            NoRestore = true,
+        });
+
+        Assert.Equal(fluent.Executable, objectInit.Executable);
+        Assert.Equal(fluent.Arguments, objectInit.Arguments);
+    }
+
+    [Fact]
+    public void Test_ObjectInit_Emits_Identical_Plan_To_Fluent()
+    {
+        var fluent = DotNet.Test(s => s
+            .SetProject("./Foo.csproj")
+            .SetNoBuild(true)
+            .AddLogger("trx;LogFileName=test-results.trx"));
+
+        var objectInit = DotNet.Test(new DotNetTestSettings
+        {
+            Project = "./Foo.csproj",
+            NoBuild = true,
+            Loggers = { "trx;LogFileName=test-results.trx" },
+        });
+
+        Assert.Equal(fluent.Arguments, objectInit.Arguments);
+    }
+
+    [Fact]
+    public void Clean_ObjectInit_Round_Trips()
+    {
+        var args = DotNet.Clean(new DotNetCleanSettings
+        {
+            Project = "./Foo.csproj",
+            Configuration = Configuration.Release,
+            NoLogo = true,
+        }).Arguments;
+        Assert.Contains("./Foo.csproj", args);
+        Assert.Equal("Release", args[IndexOf(args, "--configuration") + 1]);
+        Assert.Contains("--nologo", args);
+    }
+
+    [Fact]
+    public void Pack_Restore_Publish_Format_ObjectInit_Surface_Compiles_And_Returns_CommandPlan()
+    {
+        // Smoke test: each wrapper accepts an object-init settings argument and returns a non-null CommandPlan.
+        Assert.NotNull(DotNet.Restore(new DotNetRestoreSettings { Project = "./Foo.csproj" }));
+        Assert.NotNull(DotNet.Pack(new DotNetPackSettings { Project = "./Foo.csproj" }));
+        Assert.NotNull(DotNet.Publish(new DotNetPublishSettings { Project = "./Foo.csproj" }));
+        Assert.NotNull(DotNet.Format(new DotNetFormatSettings { Project = "./Foo.csproj" }));
+        Assert.NotNull(DotNet.FormatWhitespace(new DotNetFormatWhitespaceSettings { Project = "./Foo.csproj" }));
+        Assert.NotNull(DotNet.FormatStyle(new DotNetFormatStyleSettings { Project = "./Foo.csproj" }));
+        Assert.NotNull(DotNet.FormatAnalyzers(new DotNetFormatAnalyzersSettings { Project = "./Foo.csproj" }));
     }
 }

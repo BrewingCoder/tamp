@@ -103,4 +103,17 @@ public static class DotNet
         configure?.Invoke(s);
         return s.ToCommandPlan();
     }
+
+    // ---- Object-init overloads (1.2.0+, TAM-161) — see Tamp.NetCli.V10/DotNet.cs for docs. ----
+    public static CommandPlan Restore(DotNetRestoreSettings settings) => settings.ToCommandPlan();
+    public static CommandPlan Build(DotNetBuildSettings settings) => settings.ToCommandPlan();
+    public static CommandPlan Clean(DotNetCleanSettings settings) => settings.ToCommandPlan();
+    public static CommandPlan Test(DotNetTestSettings settings) => settings.ToCommandPlan();
+    public static CommandPlan Pack(DotNetPackSettings settings) => settings.ToCommandPlan();
+    public static CommandPlan Publish(DotNetPublishSettings settings) => settings.ToCommandPlan();
+    public static CommandPlan NuGetPush(DotNetNuGetPushSettings settings) => settings.ToCommandPlan();
+    public static CommandPlan Format(DotNetFormatSettings settings) => settings.ToCommandPlan();
+    public static CommandPlan FormatWhitespace(DotNetFormatWhitespaceSettings settings) => settings.ToCommandPlan();
+    public static CommandPlan FormatStyle(DotNetFormatStyleSettings settings) => settings.ToCommandPlan();
+    public static CommandPlan FormatAnalyzers(DotNetFormatAnalyzersSettings settings) => settings.ToCommandPlan();
 }

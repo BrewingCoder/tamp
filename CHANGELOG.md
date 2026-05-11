@@ -8,6 +8,58 @@ Pre-1.0 versions may break public API freely between minor versions; the `0.x` l
 
 ## [Unreleased]
 
+## [1.2.0] — 2026-05-11 — Object-init overloads + ADR backfill (additive)
+
+### Added — TAM-161
+
+- **Object-init overloads** on every `Tamp.NetCli.V8/V9/V10` wrapper method that accepts settings: `Restore`, `Build`, `Clean`, `Test`, `Pack`, `Publish`, `NuGetPush`, `Format`, `FormatWhitespace`, `FormatStyle`, `FormatAnalyzers`. Both authoring styles are supported:
+
+  ```csharp
+  // Fluent (canonical in docs and `tamp init` templates):
+  DotNet.Build(s => s.SetProject(Solution.Path).SetConfiguration(Configuration));
+
+  // Object-init (alternative):
+  DotNet.Build(new() { Project = Solution.Path, Configuration = Configuration });
+  ```
+
+  Both produce byte-equal CommandPlans. NUKE migrants stay in the fluent paradigm; new adopters who prefer C# object-initializer syntax get a matching shape.
+
+### Satellite fanout — coordinated with this release
+
+The 1.2.0 cut also lands object-init overloads across every first-party satellite that exposes verb wrappers (17 satellites; 6 satellites are typed-client/orchestrator shape and N/A). Tool-bound wrappers (`(Tool, Action<TSettings>)`) gain `(Tool, TSettings)` siblings — same pattern, preserves tool resolution. Each satellite cuts its own patch bump alongside this release; see each satellite's CHANGELOG for verb counts. Adopters who pin satellites get the new shape on next restore.
+
+Surface summary (overload counts per satellite with verb wrappers):
+
+| Satellite | New overloads | Version |
+|---|---|---|
+| `Tamp.Docker.V27` | 27 (top-level + Compose + Buildx) | 0.3.0 → 0.3.1 |
+| `Tamp.EFCore.V8/V9/V10` | 13 × 3 = 39 | 0.2.0 → 0.2.1 |
+| `Tamp.AzureCli.V2` | 15 (top-level + Group + Account + Bicep) | 0.1.0 → 0.1.1 |
+| `Tamp.CodeQL.V2` | 14 (Database + GitHub + Resolve + Pack + Query + top-level) | 0.1.0 → 0.1.1 |
+| `Tamp.Yarn.V4` | 13 (top-level + Workspaces + Npm) | 0.1.0 → 0.1.1 |
+| `Tamp.GitHubCli.V2` | 10 (Pr + Issue + Release + Api) | 0.1.0 → 0.1.1 |
+| `Tamp.Turbo.V2` | 9 | 0.2.0 → 0.2.1 |
+| `Tamp.Vite.V5` | 9 (Vite + Vitest) | 0.1.0 → 0.1.1 |
+| `Tamp.Playwright.V1` | 9 | 0.1.0 → 0.1.1 |
+| `Tamp.Bicep` | 5 | 0.1.0 → 0.1.1 |
+| `Tamp.AzureFunctionsCoreTools.V4` | 5 (`Func.*`) | 0.1.0 → 0.1.1 |
+| `Tamp.TruffleHog.V3` | 4 | 0.1.0 → 0.1.1 |
+| `Tamp.GraphQLCodegen.V5` | 2 | 0.1.0 → 0.1.1 |
+| `Tamp.AzureStaticWebApps.V2` | 2 (`Swa.*`) | 0.1.0 → 0.1.1 |
+| `Tamp.SonarScanner.V10` | 2 (Begin + End) | 0.3.0 → 0.3.1 |
+| `Tamp.GitVersion.V6` | 1 | 0.1.0 → 0.1.1 |
+| `Tamp.ReportGenerator.V5` | 1 | 0.1.0 → 0.1.1 |
+
+N/A (typed-client/orchestrator shape — no `CommandPlan`-returning verb wrappers): `Tamp.Http`, `Tamp.Coverlet.V6`, `Tamp.AdoRest.V7`, `Tamp.AdoServiceConnection.V1`, `Tamp.ServiceBus.V7`, `Tamp.Testcontainers.V4`.
+
+### Documentation backfill
+
+- **9 ADRs written** (TAM-9 through TAM-20): ADR 0003 (build scripts are .NET console projects), 0004 (CommandPlan as universal wrapper output), 0005 (Secret as a distinct type), 0008 (SemVer policy), 0010 (HostProfile built once at startup), 0011 (Target authoring via fluent property DSL), 0012 (declarative resource consumption), 0013 (schema-driven wrapper generation), 0014 (shell strategy: pwsh-only when shell is required). All under `docs/adr/`.
+- **README + `docs/index.md` refresh** — version table reflects every shipped satellite; status line current; new-surface highlights from 1.1.0 + 1.2.0 (`.Default()`, `.Internal()`, `CleanArtifacts()`, `[FromPath]`, `[FromNodeModules]`, `[CallerArgumentExpression]` overloads, object-init overloads).
+- **Wiki refresh** — Build-Script-Authoring + Module-Catalog + per-wrapper pages reflect the 1.1.0+ shape (no `.TopLevel()`, no `nameof()`, examples lead with the modern surface).
+
+[1.2.0]: https://github.com/tamp-build/tamp/releases/tag/v1.2.0
+
 ## [1.1.0] — 2026-05-11 — Build.cs concision pass (BREAKING)
 
 ### Breaking — `.TopLevel()` default inverted

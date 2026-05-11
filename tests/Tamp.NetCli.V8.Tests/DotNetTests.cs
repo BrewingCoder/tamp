@@ -298,7 +298,7 @@ public sealed class DotNetTests
     [Fact]
     public void NuGetPush_Throws_On_Null_Configurer()
     {
-        Assert.Throws<ArgumentNullException>(() => DotNet.NuGetPush(null!));
+        Assert.Throws<ArgumentNullException>(() => DotNet.NuGetPush((Action<DotNetNuGetPushSettings>)null!));
     }
 
     [Fact]

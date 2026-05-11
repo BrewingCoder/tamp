@@ -38,16 +38,27 @@ Every load-bearing design choice is recorded as an ADR. Read these before propos
 
 - [ADR 0001 — Small core, plugin-driven architecture](adr/0001-small-core-plugin-architecture)
 - [ADR 0002 — Package naming convention](adr/0002-package-naming-convention)
+- [ADR 0003 — Build scripts are .NET console projects](adr/0003-build-scripts-net-console-projects)
+- [ADR 0004 — CommandPlan as universal wrapper output](adr/0004-commandplan-universal-output)
+- [ADR 0005 — Secret as a distinct type, not a `[Sensitive]` attribute](adr/0005-secret-distinct-type)
 - [ADR 0006 — Repository layout: monorepo for core and first-party modules](adr/0006-repo-layout-monorepo)
 - [ADR 0007 — License (MIT)](adr/0007-license-mit)
+- [ADR 0008 — SemVer policy for `Tamp.Core` and modules](adr/0008-semver-policy)
 - [ADR 0009 — Governance and namespace policy](adr/0009-governance-and-namespace-policy)
+- [ADR 0010 — HostProfile is built once at startup and frozen](adr/0010-hostprofile-frozen)
+- [ADR 0011 — Target authoring via fluent property DSL (NUKE-shaped)](adr/0011-target-fluent-dsl)
+- [ADR 0012 — Declarative resource consumption (Shared / Exclusive)](adr/0012-declarative-resources)
+- [ADR 0013 — Schema-driven wrapper generation as the canonical workflow](adr/0013-schema-driven-wrappers)
+- [ADR 0014 — Shell strategy: `pwsh` when shell is required, never assume `bash`/`cmd`](adr/0014-shell-strategy-pwsh)
 - [ADR 0015 — Target framework strategy](adr/0015-target-framework-strategy)
+- [ADR 0016 — Decision-maker silence within scope timeframe forfeits the right to weigh in](adr/0016-decision-silence-forfeits)
+- [ADR 0017 — Pull-request staleness: auto-close after author silence on review feedback](adr/0017-pr-staleness-autoclose)
 
 → [Full ADR index](adr/)
 
 ## Releases
 
-`Tamp.Core 1.0.3` is live, the `Tamp.*` NuGet prefix is reserved to the project, and 14 satellite packages are shipping. See the [changelog ↗](https://github.com/tamp-build/tamp/blob/main/CHANGELOG.md) and the [main README ↗](https://github.com/tamp-build/tamp#readme) for the current package matrix.
+`Tamp.Core 1.2.0` is live, the `Tamp.*` NuGet prefix is reserved to the project, and 23 satellite packages are shipping. See the [changelog ↗](https://github.com/tamp-build/tamp/blob/main/CHANGELOG.md) and the [main README ↗](https://github.com/tamp-build/tamp#readme) for the current package matrix.
 
 ## Project meta
 

@@ -8,26 +8,45 @@ A small-core, plugin-driven build automation framework for .NET 10 and beyond. C
 
 ## Status
 
-**Tamp.Core 1.0.3 shipped 2026-05-10.** API is stable; the `Tamp.*` NuGet prefix is reserved to the project. 14 satellite packages are live on nuget.org and pin against core via `PackageReference`.
+**Tamp.Core 1.2.0 shipped 2026-05-11.** API is stable; the `Tamp.*` NuGet prefix is reserved to the project. 23 satellite packages are live on nuget.org and pin against core via `PackageReference`.
+
+Recent surface (1.1.0 → 1.2.0):
+- `.Default()` — opt any target into being the default invocation. `.Internal()` — opt out of `--list` and CLI invocation. `.TopLevel()` is now Obsolete (no-op).
+- `[FromPath("name")]` and `[FromNodeModules("name")]` — auto-inject native or workspace-local `Tool` references. No more hand-rolled PATH resolution.
+- `[CallerArgumentExpression]` overloads on `DependsOn`/`After`/`Before`/`Triggers`/`TriggeredBy`/`OnFailureOf` — `.DependsOn(Restore)` instead of `.DependsOn(nameof(Restore))`. IntelliSense filters to Target-typed members.
+- `CleanArtifacts()` helper — safe `bin`/`obj` cleanup scoped to `Solution.Projects`. Replaces the unsafe `**/bin` glob pattern that could delete `node_modules/*/bin` and tracked source scripts.
+- Object-init overloads on `Tamp.NetCli.V8/V9/V10` settings — `DotNet.Build(new() { Project = ..., Configuration = ... })` alongside the canonical fluent shape.
+- `[Solution("path")]` positional constructor + subtree auto-discovery for monorepos.
+- `GitRepository.AssertNotStale()` — pre-PR gate against branches too far behind `origin/main`.
 
 | Package family | Repo | Latest |
 |---|---|---|
-| `Tamp.Core` / `Tamp.Cli` / `dotnet-tamp` | this repo (`tamp`) | **1.0.3** |
-| `Tamp.NetCli.V8` / `V9` / `V10` | this repo | **1.0.3** |
-| `Tamp.DotNetCoverage.V18` | this repo | **1.0.3** |
-| `Tamp.Docker.V27` | [`tamp-docker`](https://github.com/tamp-build/tamp-docker) | **0.2.0** |
-| `Tamp.SonarScanner.V10` / `SonarScannerCli.V6` | [`tamp-sonar`](https://github.com/tamp-build/tamp-sonar) | **0.1.0** |
-| `Tamp.EFCore.V8` / `V9` / `V10` | [`tamp-ef`](https://github.com/tamp-build/tamp-ef) | **0.1.0** |
+| `Tamp.Core` / `Tamp.Cli` / `dotnet-tamp` | this repo (`tamp`) | **1.2.0** |
+| `Tamp.NetCli.V8` / `V9` / `V10` | this repo | **1.2.0** |
+| `Tamp.DotNetCoverage.V18` | this repo | **1.2.0** |
+| `Tamp.Docker.V27` | [`tamp-docker`](https://github.com/tamp-build/tamp-docker) | **0.3.0** (BuildKit by default) |
+| `Tamp.SonarScanner.V10` / `SonarScannerCli.V6` | [`tamp-sonar`](https://github.com/tamp-build/tamp-sonar) | **0.3.0** |
+| `Tamp.EFCore.V8` / `V9` / `V10` | [`tamp-ef`](https://github.com/tamp-build/tamp-ef) | **0.2.0** (per-tenant migration fan-out) |
 | `Tamp.GitVersion.V6` | [`tamp-gitversion`](https://github.com/tamp-build/tamp-gitversion) | **0.1.0** |
 | `Tamp.ReportGenerator.V5` | [`tamp-reportgenerator`](https://github.com/tamp-build/tamp-reportgenerator) | **0.1.0** |
 | `Tamp.GitHubCli.V2` | [`tamp-gh`](https://github.com/tamp-build/tamp-gh) | **0.1.0** |
 | `Tamp.Yarn.V4` | [`tamp-yarn`](https://github.com/tamp-build/tamp-yarn) | **0.1.0** |
-| `Tamp.Turbo.V2` | [`tamp-turbo`](https://github.com/tamp-build/tamp-turbo) | **0.1.0** |
+| `Tamp.Turbo.V2` | [`tamp-turbo`](https://github.com/tamp-build/tamp-turbo) | **0.2.0** |
 | `Tamp.GraphQLCodegen.V5` | [`tamp-graphql-codegen`](https://github.com/tamp-build/tamp-graphql-codegen) | **0.1.0** |
 | `Tamp.Vite.V5` (Vite + Vitest) | [`tamp-vite`](https://github.com/tamp-build/tamp-vite) | **0.1.0** |
 | `Tamp.Playwright.V1` | [`tamp-playwright`](https://github.com/tamp-build/tamp-playwright) | **0.1.0** |
 | `Tamp.TruffleHog.V3` | [`tamp-trufflehog`](https://github.com/tamp-build/tamp-trufflehog) | **0.1.0** |
 | `Tamp.CodeQL.V2` | [`tamp-codeql`](https://github.com/tamp-build/tamp-codeql) | **0.1.0** |
+| `Tamp.AzureCli.V2` | [`tamp-azure-cli`](https://github.com/tamp-build/tamp-azure-cli) | **0.1.0** |
+| `Tamp.AzureStaticWebApps.V2` | [`tamp-azure-static-web-apps`](https://github.com/tamp-build/tamp-azure-static-web-apps) | **0.1.0** |
+| `Tamp.AzureFunctionsCoreTools.V4` | [`tamp-azure-functions-core-tools`](https://github.com/tamp-build/tamp-azure-functions-core-tools) | **0.1.0** |
+| `Tamp.Bicep` | [`tamp-bicep`](https://github.com/tamp-build/tamp-bicep) | **0.1.0** |
+| `Tamp.AdoRest.V7` | [`tamp-ado-rest`](https://github.com/tamp-build/tamp-ado-rest) | **0.1.0** |
+| `Tamp.AdoServiceConnection.V1` | [`tamp-ado-service-connection`](https://github.com/tamp-build/tamp-ado-service-connection) | **0.1.0** |
+| `Tamp.Coverlet.V6` | [`tamp-coverlet`](https://github.com/tamp-build/tamp-coverlet) | **0.1.0** |
+| `Tamp.Testcontainers.V4` | [`tamp-testcontainers`](https://github.com/tamp-build/tamp-testcontainers) | **0.1.0** |
+| `Tamp.ServiceBus.V7` | [`tamp-servicebus`](https://github.com/tamp-build/tamp-servicebus) | **0.1.0** (admin + topology convergence) |
+| `Tamp.Http` | this repo | **1.2.0** (HTTP-API library-mode foundation) |
 
 Third-party tool wrappers ship from satellite repos so each tool's release cadence (Docker every 2 weeks, Vite every quarter, Playwright every 4–6 weeks, etc.) doesn't gate Tamp core releases. Same `PackageReference` story for the consumer; different release schedules for the maintainer.
 
@@ -137,9 +156,9 @@ my-repo/
     <Nullable>enable</Nullable>
   </PropertyGroup>
   <ItemGroup>
-    <PackageReference Include="Tamp.Core" Version="1.0.0" />
-    <PackageReference Include="Tamp.NetCli.V10" Version="1.0.0" />
-    <PackageReference Include="Tamp.Docker.V27" Version="1.0.0" />
+    <PackageReference Include="Tamp.Core" Version="1.2.0" />
+    <PackageReference Include="Tamp.NetCli.V10" Version="1.2.0" />
+    <PackageReference Include="Tamp.Docker.V27" Version="0.3.0" />
   </ItemGroup>
 </Project>
 ```
@@ -161,7 +180,7 @@ All three produce identical behaviour. The global tool exists for ergonomics; no
 Targets are properties on a build class. Phase, dependencies, parameters, and the work itself are all declared inline. The shape is similar to NUKE's, deliberately, because the syntax is good — it's the architecture underneath that needed rethinking.
 
 ```csharp
-using Tamp.Core;
+using Tamp;
 using Tamp.NetCli.V10;
 using Tamp.Docker.V27;
 
@@ -173,34 +192,39 @@ class Build : TampBuild
     Configuration Configuration = IsLocalBuild ? Configuration.Debug : Configuration.Release;
 
     [Secret("Container registry password")]
-    Secret RegistryPassword;
+    readonly Secret RegistryPassword = null!;
 
     [Parameter("Target environment")]
-    string Environment = "development";
+    readonly string Environment = "development";
+
+    [Solution] readonly Solution Solution = null!;
+    [FromPath("docker")] readonly Tool Docker = null!;
+
+    Target Clean => _ => _.Executes(() => CleanArtifacts());     // safe by construction — scoped to Solution.Projects
 
     Target Restore => _ => _
         .Phase(Phase.Restore)
-        .Consumes(Resource.BuildCache.Dotnet, ConsumeMode.Exclusive)
         .RequiresNetwork()
-        .Executes(() => DotNet.Restore());
+        .Executes(() => DotNet.Restore(s => s.SetProject(Solution.Path)));
 
     Target Compile => _ => _
+        .Default()                                                // dotnet tamp → runs this
         .Phase(Phase.Build)
-        .DependsOn(Restore)
-        .Consumes(Resource.BuildCache.Dotnet, ConsumeMode.Exclusive)
-        .MemoryBudget(2_048)
-        .Executes(() => DotNet.Build(s => s
-            .SetConfiguration(Configuration)
-            .SetNoRestore(true)));
+        .DependsOn(Restore)                                       // [CallerArgumentExpression] — no nameof()
+        .Executes(() => DotNet.Build(new() {                      // object-init style
+            Project = Solution.Path,
+            Configuration = Configuration,
+            NoRestore = true,
+        }));
 
     Target Test => _ => _
         .Phase(Phase.Test)
         .DependsOn(Compile)
-        .Consumes(Resource.BuildCache.Dotnet, ConsumeMode.Shared)
-        .MaxParallelism(4)
-        .Executes(() => DotNet.Test(s => s
+        .Executes(() => DotNet.Test(s => s                         // fluent style — equivalent
+            .SetProject(Solution.Path)
             .SetConfiguration(Configuration)
-            .SetNoBuild(true)));
+            .SetNoBuild(true)
+            .AddLogger("trx;LogFileName=test-results.trx")));      // solution-mode auto-disambiguates to LogFilePrefix
 
     Target Pack => _ => _
         .Phase(Phase.Pack)
@@ -208,6 +232,7 @@ class Build : TampBuild
         .Idempotent()
         .Produces("artifacts/*.nupkg")
         .Executes(() => DotNet.Pack(s => s
+            .SetProject(Solution.Path)
             .SetConfiguration(Configuration)
             .SetOutput("artifacts")));
 
@@ -219,18 +244,20 @@ class Build : TampBuild
         .Retry(count: 3, backoff: Backoff.Exponential)
         .Executes(() =>
         {
-            Docker.Login(s => s
+            Tamp.Docker.V27.Docker.Login(s => s
                 .SetServer("registry.example.com")
                 .SetUsername("ci")
-                .SetPassword(RegistryPassword));    // ← typed Secret, never logged
+                .SetPassword(RegistryPassword));     // typed Secret — never logged, redacted in dry-runs
 
-            Docker.Push(s => s
-                .SetImage($"registry.example.com/myapp:{Environment}"));
+            Tamp.Docker.V27.Docker.Build(s => s      // 0.3.0+: routes to docker buildx build by default
+                .SetContext(".")
+                .AddTag($"registry.example.com/myapp:{Environment}")
+                .AddPlatform("linux/amd64"));
         });
 
     Target Ci => _ => _
         .DependsOn(Pack)
-        .Description("Default CI target: restore, build, test, pack");
+        .Description("CI pipeline: restore, build, test, pack.");
 }
 ```
 
