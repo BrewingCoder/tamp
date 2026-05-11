@@ -14,6 +14,14 @@ Pre-1.0 versions may break public API freely between minor versions; the `0.x` l
 - **HoldFast wrapper sprint shipped** — TAM-85 through TAM-92. Seven new satellite packages live on nuget.org: `Tamp.Yarn.V4`, `Tamp.Turbo.V2`, `Tamp.GraphQLCodegen.V5`, `Tamp.Vite.V5` (Vite + Vitest), `Tamp.Playwright.V1`, `Tamp.TruffleHog.V3`, `Tamp.CodeQL.V2`. `Tamp.Docker.V27` extended with `compose` + `buildx` sub-facades in 0.2.0 (TAM-87).
 - **Strata adoption roadmap landed in TAM project** — TAM-94 through TAM-106 cover Azure / ADO / IaC / testing wrappers requested by Strata-Scott. Tier 1 (blockers): `Tamp.AzureCli.V2`, `Tamp.AzureStaticWebApps.V2`, `Tamp.Bicep`, `Tamp.AdoRest.V7`. Naming: full-word `Azure*` prefix for the Azure family (matches Microsoft SDK convention).
 
+## [1.0.5] — 2026-05-11
+
+### Added
+
+- `InternalsVisibleTo` entry for `Tamp.Http` — the new foundation library for HTTP-API wrappers (TAM-97 and beyond). Downstream library-mode wrappers (`Tamp.AdoRest.V7`, future `Tamp.GitHubApi`, `Tamp.YouTrackApi`, `Tamp.JiraApi`) subclass `TampApiClient` from Tamp.Http and don't need direct Tamp.Core IVT — only Tamp.Http does the `Secret.Reveal()` for auth-header construction.
+
+[1.0.5]: https://github.com/tamp-build/tamp/releases/tag/v1.0.5
+
 ## [1.0.4] — 2026-05-11
 
 ### Added
@@ -49,7 +57,7 @@ Pre-1.0 versions may break public API freely between minor versions; the `0.x` l
 
 - **TAM-84** — two `Tamp.DotNetCoverage.V18` tests previously failing on `windows-latest` (`Collect_Executable_Is_The_Tool_Path`, `Merge_AddInputs_Accepts_AbsolutePath_Sequence`). Both had hardcoded forward-slash path assertions that didn't survive `AbsolutePath`'s `Path.GetFullPath` normalization on Windows. Now compare through the same `AbsolutePath.Value` they emit.
 
-[Unreleased]: https://github.com/tamp-build/tamp/compare/v1.0.4...HEAD
+[Unreleased]: https://github.com/tamp-build/tamp/compare/v1.0.5...HEAD
 [1.0.2]: https://github.com/tamp-build/tamp/releases/tag/v1.0.2
 
 ## [1.0.1] — 2026-05-10

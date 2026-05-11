@@ -31,3 +31,4 @@ using System.Runtime.CompilerServices;
 [assembly: InternalsVisibleTo("Tamp.Coverlet.V6")]
 [assembly: InternalsVisibleTo("Tamp.Testcontainers.V4")]
 [assembly: InternalsVisibleTo("Tamp.ServiceBus.V8")]
+[assembly: InternalsVisibleTo("Tamp.Http")]
