@@ -51,7 +51,6 @@ class Build : TampBuild
         });
 
     Target Clean => _ => _
-        .TopLevel()
         .Description("Delete bin/obj across the tree and the artifacts directory.")
         .Executes(() =>
         {
@@ -65,7 +64,6 @@ class Build : TampBuild
         .Executes(() => DotNet.Restore(s => s.SetProject(Solution.Path)));
 
     Target Compile => _ => _
-        .TopLevel()
         .DependsOn(nameof(Restore))
         .Description("dotnet build the solution.")
         .Executes(() => DotNet.Build(s => s
@@ -74,7 +72,6 @@ class Build : TampBuild
             .SetNoRestore(true)));
 
     Target Test => _ => _
-        .TopLevel()
         .DependsOn(nameof(Compile))
         .Description("Run the test suite across all TFMs with two coverage collectors stacked.")
         // Two collectors:
@@ -100,7 +97,6 @@ class Build : TampBuild
             .SetResultsDirectory(CoverageDir)));
 
     Target Coverage => _ => _
-        .TopLevel()
         .DependsOn(nameof(Test))
         .Description("Merge the per-test-run .coverage files and emit Cobertura XML for Sonar / coverage gates.")
         .Executes(() => DotNetCoverage.Merge(DotNetCoverageTool, m => m
@@ -109,7 +105,6 @@ class Build : TampBuild
             .SetOutputFormat(CoverageFormat.Cobertura)));
 
     Target Pack => _ => _
-        .TopLevel()
         .DependsOn(nameof(Test))
         .Description("Pack all NuGet artifacts into ./artifacts (both Cli flavors).")
         .Executes(() => new[]
@@ -131,7 +126,6 @@ class Build : TampBuild
         });
 
     Target Ci => _ => _
-        .TopLevel()
         .DependsOn(nameof(Info), nameof(Clean), nameof(Pack))
         .Description("Full CI pipeline: print info, clean, restore, build, test, pack.");
 
@@ -170,7 +164,6 @@ class Build : TampBuild
         .Executes(() => SonarScanner.End(SonarTool, s => s.SetToken(SonarToken)));
 
     Target Sonar => _ => _
-        .TopLevel()
         .DependsOn(nameof(SonarBegin), nameof(SonarEnd))
         .Description("End-to-end Sonar scan: Begin (before Compile) → Compile → Test → End. Requires SONAR_TOKEN.");
 
