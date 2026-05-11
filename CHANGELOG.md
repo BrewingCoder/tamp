@@ -8,6 +8,14 @@ Pre-1.0 versions may break public API freely between minor versions; the `0.x` l
 
 ## [Unreleased]
 
+## [1.0.6] — 2026-05-11
+
+### Added
+
+- `InternalsVisibleTo` entry for `Tamp.ServiceBus.V7`. The original pre-load (1.0.4) speculatively granted V8, but `Azure.Messaging.ServiceBus` is still on major 7.x — and the Tamp convention is "V tracks SDK major" (see `Tamp.AzureCli.V2`, `Tamp.AzureStaticWebApps.V2`). V8 stays in place for the future SDK bump.
+
+[1.0.6]: https://github.com/tamp-build/tamp/releases/tag/v1.0.6
+
 ### Ecosystem
 
 - **`Tamp.*` NuGet prefix reserved** to the `Tamp` account on nuget.org (confirmed by NuGet support 2026-05-10). All future `Tamp.*` packages publish with the verified-publisher checkmark; only the `Tamp` account can claim package IDs under the prefix.
