@@ -495,6 +495,16 @@ public abstract partial class TampBuild
         var type = build.GetType();
 
         const BindingFlags flags = BindingFlags.Instance | BindingFlags.Public | BindingFlags.NonPublic;
+
+        // Pass 1: build a map from each Target property's compiled lambda method
+        // to its property name. This powers the params Target[] overloads on
+        // DependsOn/After/Before/Triggers/TriggeredBy/OnFailureOf (1.3.0+).
+        // CallerArgumentExpression can't capture per-element source for params,
+        // so we resolve names via the underlying MethodInfo — stable across
+        // property-getter invocations because the lambda body compiles to a
+        // single method.
+        var methodMap = new Dictionary<MethodInfo, string>();
+        var targetProperties = new List<(System.Reflection.PropertyInfo Prop, Target Delegate)>();
         foreach (var prop in type.GetProperties(flags))
         {
             if (prop.PropertyType != typeof(Target)) continue;
@@ -505,7 +515,20 @@ public abstract partial class TampBuild
                 throw new InvalidOperationException(
                     $"Target property '{type.FullName}.{prop.Name}' returned null.");
 
-            var def = new TargetDefinition();
+            // Same lambda compiles to the same MethodInfo across invocations; if a
+            // future build class somehow shares a method across properties, the
+            // first wins and subsequent overlap is ignored.
+            if (!methodMap.ContainsKey(del.Method))
+                methodMap[del.Method] = prop.Name;
+            targetProperties.Add((prop, del));
+        }
+
+        // Pass 2: invoke each property's delegate against a TargetDefinition
+        // primed with the method map, so params Target[] calls inside the body
+        // can resolve their references.
+        foreach (var (prop, del) in targetProperties)
+        {
+            var def = new TargetDefinition(methodMap);
             del(def);
             var spec = def.Build(prop.Name);
             if (result.ContainsKey(spec.Name))

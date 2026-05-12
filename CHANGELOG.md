@@ -8,6 +8,38 @@ Pre-1.0 versions may break public API freely between minor versions; the `0.x` l
 
 ## [Unreleased]
 
+## [1.3.0] — 2026-05-12 — `params Target[]` overloads + HoldFast cutover surface (additive)
+
+### Added — TAM-162
+
+- **`params Target[]` overloads on lifecycle dependency methods** — `DependsOn`, `After`, `Before`, `Triggers`, `TriggeredBy`, `OnFailureOf`. Resolves HoldFast's friction #14 from the 1.2.0 refactor. User writes:
+
+  ```csharp
+  Target Ci => _ => _
+      .Default()
+      .DependsOn(Test, Publish, FrontendBuild, DockerBuildBackend);
+  ```
+
+  Names resolve via a `Method → property-name` map the framework builds during target collection (the same reflection pass that registers targets). NUKE's approach — delegate equality via `MethodInfo` is stable across property-getter invocations because the lambda body compiles to a single method.
+
+  Single-arg overloads (`DependsOn(Restore)`) keep using `[CallerArgumentExpression]` for source-identifier capture. The `params string[]` overloads stay for dynamic name composition. All three forms produce byte-equal `TargetSpec.Dependencies` lists.
+
+  10 new tests in `CallerArgExprDependsOnTests` cover varargs for each of the 6 lifecycle methods, the 4-arg HoldFast-shape case, plus null-target and unmapped-delegate guards.
+
+### Companion satellite ships in this wave
+
+- **`Tamp.Helm.V3` 0.1.0** — new satellite. Verbs: `Upgrade`, `Template`, `Lint`, `Package`, `Push`. Both fluent `(Tool, Action<TSettings>)` and object-init `(Tool, TSettings)` overloads from day-1. Settings spec per HoldFast's cutover ask covers the full `helm upgrade --install` surface (Chart, Release, Namespace, Version, Wait, Timeout, CreateNamespace, Atomic, AddValuesFile, SetValue, AddValues, Force, ReuseValues, ResetValues, WaitForJobs, HistoryMax, Description). `Push.SetPlainHttp(bool)` for in-cluster `localhost:32000`-style registries. `Package.SetSign(true)` requires a `Secret` passphrase (Helm v3 has no `--passphrase-file`; the wrapper attaches it to `CommandPlan.Secrets` for redaction and documents the gpg-agent / loopback-pinentry CI setup).
+
+- **`Tamp.Http` 0.1.1** — adds `HttpProbe.WaitForHealthy(url, timeout, ...)` static helper for post-deploy smoke targets. Optional params: `interval` (default 2s), `headers`, `isHealthy` async predicate (for body-content checks), `HttpClient` (for self-signed certs / proxies), `CancellationToken`. Transient errors (`HttpRequestException`, per-request `HttpClient` timeout) are treated as retryable. `TimeoutException` on budget exhaustion includes last status, attempt count, last transport error.
+
+### Documentation
+
+- **Wiki Pitfalls page** — new. Covers the CleanArtifacts blast-radius pattern (HoldFast's friction #12 headliner), yarn berry post-disaster recovery (`rm -rf node_modules .yarn/install-state.gz`), and BuildKit migration warnings (`SecretsUsedInArgOrEnv` informational lint).
+- **`Build-Script-Authoring` → Common idioms section** — image-tag idiom, fan-out target with `params Target[]`, post-deploy smoke probe with `HttpProbe.WaitForHealthy`.
+- **`Tamp-Docker` page** — Docker.Push insecure-registry / multi-tag / `[Secret]`-credential idioms sections, buildx-warnings migration callout.
+
+[1.3.0]: https://github.com/tamp-build/tamp/releases/tag/v1.3.0
+
 ## [1.2.0] — 2026-05-11 — Object-init overloads + ADR backfill (additive)
 
 ### Added — TAM-161

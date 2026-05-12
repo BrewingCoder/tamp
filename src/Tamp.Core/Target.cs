@@ -89,6 +89,18 @@ public interface ITargetDefinition
         [System.Runtime.CompilerServices.CallerArgumentExpression(nameof(target))] string? name = null);
 
     /// <summary>
+    /// Multi-target dependency by Target reference (1.3.0+). Equivalent to
+    /// chaining <c>.DependsOn(X).DependsOn(Y)...</c>. Names are resolved by
+    /// matching each delegate's underlying method against the build class's
+    /// Target-typed properties — the same reflection pass that registers them.
+    /// </summary>
+    /// <remarks>
+    /// Use the bare-identifier varargs shape: <c>.DependsOn(Test, Publish, FrontendBuild)</c>.
+    /// For dynamically-computed names use the <c>params string[]</c> overload.
+    /// </remarks>
+    ITargetDefinition DependsOn(Target t1, Target t2, params Target[] more);
+
+    /// <summary>
     /// Order constraint: this target runs after <paramref name="targetNames"/>
     /// when both happen to be in the plan. Does NOT pull them in.
     /// </summary>
@@ -97,6 +109,9 @@ public interface ITargetDefinition
     /// <summary>Target-typed equivalent. See <see cref="DependsOn(Target, string?)"/> for the convention.</summary>
     ITargetDefinition After(Target target,
         [System.Runtime.CompilerServices.CallerArgumentExpression(nameof(target))] string? name = null);
+
+    /// <summary>Multi-target order constraint (1.3.0+). See <see cref="DependsOn(Target, Target, Target[])"/>.</summary>
+    ITargetDefinition After(Target t1, Target t2, params Target[] more);
 
     /// <summary>
     /// Order constraint: this target runs before <paramref name="targetNames"/>
@@ -107,6 +122,9 @@ public interface ITargetDefinition
     /// <summary>Target-typed equivalent. See <see cref="DependsOn(Target, string?)"/> for the convention.</summary>
     ITargetDefinition Before(Target target,
         [System.Runtime.CompilerServices.CallerArgumentExpression(nameof(target))] string? name = null);
+
+    /// <summary>Multi-target order constraint (1.3.0+). See <see cref="DependsOn(Target, Target, Target[])"/>.</summary>
+    ITargetDefinition Before(Target t1, Target t2, params Target[] more);
 
     /// <summary>
     /// Outgoing trigger: when this target runs, also pull in
@@ -119,6 +137,9 @@ public interface ITargetDefinition
     ITargetDefinition Triggers(Target target,
         [System.Runtime.CompilerServices.CallerArgumentExpression(nameof(target))] string? name = null);
 
+    /// <summary>Multi-target outgoing trigger (1.3.0+). See <see cref="DependsOn(Target, Target, Target[])"/>.</summary>
+    ITargetDefinition Triggers(Target t1, Target t2, params Target[] more);
+
     /// <summary>
     /// Incoming trigger: this target runs whenever any of
     /// <paramref name="targetNames"/> runs. Equivalent to declaring
@@ -129,6 +150,9 @@ public interface ITargetDefinition
     /// <summary>Target-typed equivalent. See <see cref="DependsOn(Target, string?)"/> for the convention.</summary>
     ITargetDefinition TriggeredBy(Target target,
         [System.Runtime.CompilerServices.CallerArgumentExpression(nameof(target))] string? name = null);
+
+    /// <summary>Multi-target incoming trigger (1.3.0+). See <see cref="DependsOn(Target, Target, Target[])"/>.</summary>
+    ITargetDefinition TriggeredBy(Target t1, Target t2, params Target[] more);
 
     /// <summary>
     /// Catch-style handler: this target runs only when one of
@@ -141,6 +165,9 @@ public interface ITargetDefinition
     /// <summary>Target-typed equivalent. See <see cref="DependsOn(Target, string?)"/> for the convention.</summary>
     ITargetDefinition OnFailureOf(Target target,
         [System.Runtime.CompilerServices.CallerArgumentExpression(nameof(target))] string? name = null);
+
+    /// <summary>Multi-target failure handler (1.3.0+). See <see cref="DependsOn(Target, Target, Target[])"/>.</summary>
+    ITargetDefinition OnFailureOf(Target t1, Target t2, params Target[] more);
 
     /// <summary>
     /// Conditional skip. The <paramref name="expressionText"/> is captured
@@ -214,6 +241,15 @@ public interface ITargetDefinition
 /// </summary>
 internal sealed class TargetDefinition : ITargetDefinition
 {
+    private readonly IReadOnlyDictionary<System.Reflection.MethodInfo, string>? _targetMethodMap;
+
+    public TargetDefinition() { }
+
+    public TargetDefinition(IReadOnlyDictionary<System.Reflection.MethodInfo, string>? targetMethodMap)
+    {
+        _targetMethodMap = targetMethodMap;
+    }
+
     private readonly List<string> _dependencies = [];
     private readonly List<string> _orderAfter = [];
     private readonly List<string> _orderBefore = [];
@@ -304,6 +340,14 @@ internal sealed class TargetDefinition : ITargetDefinition
         return this;
     }
 
+    public ITargetDefinition DependsOn(Target t1, Target t2, params Target[] more)
+    {
+        _dependencies.Add(ResolveTargetName(t1, nameof(DependsOn)));
+        _dependencies.Add(ResolveTargetName(t2, nameof(DependsOn)));
+        foreach (var t in more) _dependencies.Add(ResolveTargetName(t, nameof(DependsOn)));
+        return this;
+    }
+
     public ITargetDefinition After(params string[] targetNames)
     {
         _orderAfter.AddRange(targetNames);
@@ -313,6 +357,14 @@ internal sealed class TargetDefinition : ITargetDefinition
     public ITargetDefinition After(Target target, string? name = null)
     {
         _orderAfter.Add(NormalizeCapturedTargetName(name, nameof(After)));
+        return this;
+    }
+
+    public ITargetDefinition After(Target t1, Target t2, params Target[] more)
+    {
+        _orderAfter.Add(ResolveTargetName(t1, nameof(After)));
+        _orderAfter.Add(ResolveTargetName(t2, nameof(After)));
+        foreach (var t in more) _orderAfter.Add(ResolveTargetName(t, nameof(After)));
         return this;
     }
 
@@ -328,6 +380,14 @@ internal sealed class TargetDefinition : ITargetDefinition
         return this;
     }
 
+    public ITargetDefinition Before(Target t1, Target t2, params Target[] more)
+    {
+        _orderBefore.Add(ResolveTargetName(t1, nameof(Before)));
+        _orderBefore.Add(ResolveTargetName(t2, nameof(Before)));
+        foreach (var t in more) _orderBefore.Add(ResolveTargetName(t, nameof(Before)));
+        return this;
+    }
+
     public ITargetDefinition Triggers(params string[] targetNames)
     {
         _triggers.AddRange(targetNames);
@@ -337,6 +397,14 @@ internal sealed class TargetDefinition : ITargetDefinition
     public ITargetDefinition Triggers(Target target, string? name = null)
     {
         _triggers.Add(NormalizeCapturedTargetName(name, nameof(Triggers)));
+        return this;
+    }
+
+    public ITargetDefinition Triggers(Target t1, Target t2, params Target[] more)
+    {
+        _triggers.Add(ResolveTargetName(t1, nameof(Triggers)));
+        _triggers.Add(ResolveTargetName(t2, nameof(Triggers)));
+        foreach (var t in more) _triggers.Add(ResolveTargetName(t, nameof(Triggers)));
         return this;
     }
 
@@ -352,6 +420,14 @@ internal sealed class TargetDefinition : ITargetDefinition
         return this;
     }
 
+    public ITargetDefinition TriggeredBy(Target t1, Target t2, params Target[] more)
+    {
+        _triggeredBy.Add(ResolveTargetName(t1, nameof(TriggeredBy)));
+        _triggeredBy.Add(ResolveTargetName(t2, nameof(TriggeredBy)));
+        foreach (var t in more) _triggeredBy.Add(ResolveTargetName(t, nameof(TriggeredBy)));
+        return this;
+    }
+
     public ITargetDefinition OnFailureOf(params string[] targetNames)
     {
         _onFailureOf.AddRange(targetNames);
@@ -362,6 +438,41 @@ internal sealed class TargetDefinition : ITargetDefinition
     {
         _onFailureOf.Add(NormalizeCapturedTargetName(name, nameof(OnFailureOf)));
         return this;
+    }
+
+    public ITargetDefinition OnFailureOf(Target t1, Target t2, params Target[] more)
+    {
+        _onFailureOf.Add(ResolveTargetName(t1, nameof(OnFailureOf)));
+        _onFailureOf.Add(ResolveTargetName(t2, nameof(OnFailureOf)));
+        foreach (var t in more) _onFailureOf.Add(ResolveTargetName(t, nameof(OnFailureOf)));
+        return this;
+    }
+
+    /// <summary>
+    /// Resolve a Target delegate to its property name via the method-handle map
+    /// the framework built during target collection. Single-arg overloads use
+    /// <see cref="NormalizeCapturedTargetName"/> with the compiler-captured
+    /// expression; multi-arg varargs uses this reflective path because
+    /// CallerArgumentExpression cannot capture per-element params source.
+    /// </summary>
+    private string ResolveTargetName(Target target, string callingMethod)
+    {
+        if (target is null)
+            throw new ArgumentNullException(nameof(target),
+                $"{callingMethod}(...) was passed a null Target.");
+
+        if (_targetMethodMap is null)
+            throw new InvalidOperationException(
+                $"{callingMethod}(Target, Target, params Target[]) called on a TargetDefinition with no target-method map. " +
+                $"This is only supported inside a TampBuild target-property body. " +
+                $"For direct construction (tests, framework internals), use the string overload.");
+
+        if (!_targetMethodMap.TryGetValue(target.Method, out var name))
+            throw new InvalidOperationException(
+                $"{callingMethod}(...): Target delegate doesn't map to a Target-typed property on the build class. " +
+                $"Pass the dependency by string name, or use the single-arg form which captures the source identifier via [CallerArgumentExpression].");
+
+        return name;
     }
 
     private static readonly System.Text.RegularExpressions.Regex SimpleIdentifier

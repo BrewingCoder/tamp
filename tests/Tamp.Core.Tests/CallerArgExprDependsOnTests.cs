@@ -137,7 +137,7 @@ public sealed class CallerArgExprDependsOnTests
         var def = new TargetDefinition();
         Assert.Throws<ArgumentException>(() => def.DependsOn(_ => _, ""));
         Assert.Throws<ArgumentException>(() => def.DependsOn(_ => _, "   "));
-        Assert.Throws<ArgumentException>(() => def.DependsOn(_ => _, null));
+        Assert.Throws<ArgumentException>(() => def.DependsOn(_ => _, (string?)null));
     }
 
     // ---- Normalize helper directly ----
@@ -234,4 +234,162 @@ public sealed class CallerArgExprDependsOnTests
     // Helper interface to make the test compile (we just need a dummy invocation site).
     private interface IDummy { void After(Target t); }
     private sealed class Dummy : IDummy { public void After(Target t) { } }
+
+    // ---- params Target[] overloads (TAM-162, friction #14, 1.3.0+) ----
+
+    private sealed class VarargsDependsOnBuild : TampBuild
+    {
+        public Target Restore => _ => _.Executes(() => { });
+        public Target Lint => _ => _.Executes(() => { });
+        public Target Format => _ => _.Executes(() => { });
+        public Target Compile => _ => _
+            .DependsOn(Restore, Lint, Format)
+            .Executes(() => { });
+    }
+
+    [Fact]
+    public void DependsOn_Varargs_Captures_All_Names()
+    {
+        var targets = TampBuild.CollectTargets(new VarargsDependsOnBuild());
+        var compile = targets["Compile"];
+        Assert.Equal(new[] { "Restore", "Lint", "Format" }, compile.Dependencies);
+    }
+
+    [Fact]
+    public void DependsOn_Varargs_Runs_All_Deps_First()
+    {
+        RecordingVarargsBuild.Hits.Clear();
+        var exit = TampBuild.Execute<RecordingVarargsBuild>(["Compile"]);
+        Assert.Equal(0, exit);
+        Assert.Equal(new[] { "Restore", "Lint", "Format", "Compile" }, RecordingVarargsBuild.Hits);
+    }
+
+    private sealed class RecordingVarargsBuild : TampBuild
+    {
+        public static readonly List<string> Hits = [];
+        public Target Restore => _ => _.Executes(() => Hits.Add("Restore"));
+        public Target Lint => _ => _.Executes(() => Hits.Add("Lint"));
+        public Target Format => _ => _.Executes(() => Hits.Add("Format"));
+        public Target Compile => _ => _
+            .DependsOn(Restore, Lint, Format)
+            .Executes(() => Hits.Add("Compile"));
+    }
+
+    private sealed class VarargsAfterBuild : TampBuild
+    {
+        public Target A => _ => _.Executes(() => { });
+        public Target B => _ => _.Executes(() => { });
+        public Target Late => _ => _.After(A, B).Executes(() => { });
+    }
+
+    [Fact]
+    public void After_Varargs_Captures_All_Names()
+    {
+        var targets = TampBuild.CollectTargets(new VarargsAfterBuild());
+        Assert.Equal(new[] { "A", "B" }, targets["Late"].OrderAfter);
+    }
+
+    private sealed class VarargsBeforeBuild : TampBuild
+    {
+        public Target A => _ => _.Executes(() => { });
+        public Target B => _ => _.Executes(() => { });
+        public Target Early => _ => _.Before(A, B).Executes(() => { });
+    }
+
+    [Fact]
+    public void Before_Varargs_Captures_All_Names()
+    {
+        var targets = TampBuild.CollectTargets(new VarargsBeforeBuild());
+        Assert.Equal(new[] { "A", "B" }, targets["Early"].OrderBefore);
+    }
+
+    private sealed class VarargsTriggersBuild : TampBuild
+    {
+        public Target A => _ => _.Executes(() => { });
+        public Target B => _ => _.Executes(() => { });
+        public Target Pivot => _ => _.Triggers(A, B).Executes(() => { });
+    }
+
+    [Fact]
+    public void Triggers_Varargs_Captures_All_Names()
+    {
+        var targets = TampBuild.CollectTargets(new VarargsTriggersBuild());
+        Assert.Equal(new[] { "A", "B" }, targets["Pivot"].Triggers);
+    }
+
+    private sealed class VarargsTriggeredByBuild : TampBuild
+    {
+        public Target A => _ => _.Executes(() => { });
+        public Target B => _ => _.Executes(() => { });
+        public Target Catchup => _ => _.TriggeredBy(A, B).Executes(() => { });
+    }
+
+    [Fact]
+    public void TriggeredBy_Varargs_Captures_All_Names()
+    {
+        var targets = TampBuild.CollectTargets(new VarargsTriggeredByBuild());
+        Assert.Equal(new[] { "A", "B" }, targets["Catchup"].TriggeredBy);
+    }
+
+    private sealed class VarargsOnFailureOfBuild : TampBuild
+    {
+        public Target A => _ => _.Executes(() => { });
+        public Target B => _ => _.Executes(() => { });
+        public Target Rescue => _ => _.OnFailureOf(A, B).Executes(() => { });
+    }
+
+    [Fact]
+    public void OnFailureOf_Varargs_Captures_All_Names()
+    {
+        var targets = TampBuild.CollectTargets(new VarargsOnFailureOfBuild());
+        Assert.Equal(new[] { "A", "B" }, targets["Rescue"].OnFailureOf);
+    }
+
+    [Fact]
+    public void Varargs_DependsOn_4Plus_Args_All_Captured()
+    {
+        var build = new HoldFastShapeBuild();
+        var targets = TampBuild.CollectTargets(build);
+        var ci = targets["Ci"];
+        // Mirrors HoldFast's friction #14 ask: Ci.DependsOn(Test, Publish, FrontendBuild, DockerBuildBackend).
+        Assert.Equal(new[] { "Test", "Publish", "FrontendBuild", "DockerBuildBackend" }, ci.Dependencies);
+    }
+
+    private sealed class HoldFastShapeBuild : TampBuild
+    {
+        public Target Test => _ => _.Executes(() => { });
+        public Target Publish => _ => _.Executes(() => { });
+        public Target FrontendBuild => _ => _.Executes(() => { });
+        public Target DockerBuildBackend => _ => _.Executes(() => { });
+        public Target Ci => _ => _
+            .Default()
+            .DependsOn(Test, Publish, FrontendBuild, DockerBuildBackend);
+    }
+
+    [Fact]
+    public void Varargs_DependsOn_Unmapped_Delegate_Throws_Helpful_Message()
+    {
+        // Direct construction of TargetDefinition without a method map — the
+        // params Target[] path requires one, so an unmapped call must throw
+        // with guidance.
+        var def = new TargetDefinition();
+        var ex = Assert.Throws<InvalidOperationException>(() =>
+            def.DependsOn(_ => _, _ => _));
+        Assert.Contains("no target-method map", ex.Message);
+        Assert.Contains("string overload", ex.Message);
+    }
+
+    [Fact]
+    public void Varargs_DependsOn_Null_Target_Throws_ArgumentNullException()
+    {
+        var build = new HoldFastShapeBuild();
+        // Build the method map so the resolve path is engaged.
+        var methodMap = new Dictionary<System.Reflection.MethodInfo, string>
+        {
+            [((Target)(_ => _)).Method] = "Anonymous"
+        };
+        var def = new TargetDefinition(methodMap);
+        Assert.Throws<ArgumentNullException>(() =>
+            def.DependsOn(null!, _ => _));
+    }
 }
