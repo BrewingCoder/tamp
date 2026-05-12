@@ -2,6 +2,7 @@ using Xunit;
 
 namespace Tamp.Core.Tests;
 
+[Collection(nameof(EnvironmentMutatingCollection))]
 public sealed class ToolFromPathTests : IDisposable
 {
     private readonly string _scratch;
