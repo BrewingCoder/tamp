@@ -1,4 +1,5 @@
 using System.Diagnostics;
+using Tamp.Diagnostics;
 
 namespace Tamp;
 
@@ -35,11 +36,13 @@ public sealed class Executor
         TargetGraph graph,
         ExecutionMode mode = ExecutionMode.Run,
         TextWriter? output = null,
-        LogLevel verbosity = LogLevel.Info)
+        LogLevel verbosity = LogLevel.Info,
+        BuildProjectInfo? projectInfo = null)
     {
         Graph = graph ?? throw new ArgumentNullException(nameof(graph));
         Mode = mode;
         Output = output ?? Console.Out;
+        ProjectInfo = projectInfo;
         _redactionTable = new RedactionTable();
         _redactedOutput = new RedactingTextWriter(Output, _redactionTable);
         _log = new Logger(_redactedOutput, verbosity);
@@ -48,6 +51,9 @@ public sealed class Executor
     public TargetGraph Graph { get; }
     public ExecutionMode Mode { get; }
     public TextWriter Output { get; }
+
+    /// <summary>Resolved project identification (from [BuildProject] or fallback). May be null when not provided.</summary>
+    public BuildProjectInfo? ProjectInfo { get; }
 
     /// <summary>The build-script logger. Verbosity controls what reaches the sink.</summary>
     public Logger Log => _log;
@@ -146,6 +152,32 @@ public sealed class Executor
         var handlersInvoked = new List<string>();
         (string Name, int ExitCode)? buildFailedAt = null;
         var buildSw = Stopwatch.StartNew();
+        var buildSwStartTicks = Stopwatch.GetTimestamp();
+
+        // ── Diagnostics: root build span (ADR 0018).
+        using var buildSpan = TampDiagnostics.BuildSource.StartActivity("build", ActivityKind.Internal);
+        if (buildSpan is not null)
+        {
+            buildSpan.SetTag(TampDiagnostics.Tags.BuildTargets, string.Join(",", order.Select(s => s.Name)));
+            buildSpan.SetTag(TampDiagnostics.Tags.BuildCliVersion, typeof(TampBuild).Assembly.GetName().Version?.ToString());
+            // Host facets — set once per build.
+            buildSpan.SetTag(TampDiagnostics.Tags.HostOs, System.Runtime.InteropServices.RuntimeInformation.OSDescription);
+            buildSpan.SetTag(TampDiagnostics.Tags.HostOsVersion, System.Environment.OSVersion.VersionString);
+            buildSpan.SetTag(TampDiagnostics.Tags.HostArch, System.Runtime.InteropServices.RuntimeInformation.OSArchitecture.ToString());
+            buildSpan.SetTag(TampDiagnostics.Tags.HostCpuCount, System.Environment.ProcessorCount);
+            try { buildSpan.SetTag(TampDiagnostics.Tags.HostTotalMemoryBytes, GC.GetGCMemoryInfo().TotalAvailableMemoryBytes); } catch { /* shrug */ }
+            buildSpan.SetTag(TampDiagnostics.Tags.DotnetRuntimeDescription, System.Runtime.InteropServices.RuntimeInformation.FrameworkDescription);
+            var ciVendor = TampDiagnostics.DetectCiVendor();
+            buildSpan.SetTag(TampDiagnostics.Tags.CiVendor, ciVendor);
+            buildSpan.SetTag(TampDiagnostics.Tags.CiIsCi, ciVendor != "local");
+            if (ProjectInfo is not null)
+            {
+                buildSpan.SetTag(TampDiagnostics.Tags.BuildProjectName, ProjectInfo.Name);
+                if (ProjectInfo.Area is not null) buildSpan.SetTag(TampDiagnostics.Tags.BuildProjectArea, ProjectInfo.Area);
+                buildSpan.SetTag(TampDiagnostics.Tags.BuildProjectNameSource, ProjectInfo.NameSource.ToString().ToLowerInvariant());
+            }
+        }
+        var commandsDispatchedCount = 0;
 
         foreach (var spec in order)
         {
@@ -162,6 +194,7 @@ public sealed class Executor
                 _log.WriteRaw($"==> {spec.Name} (skipped: {skipReason})");
                 skipped.Add(spec.Name);
                 records.Add(TargetExecutionRecord.Skipped(spec.Name, skipReason));
+                EmitSkippedTargetActivity(spec, skipReason);
                 continue;
             }
 
@@ -180,6 +213,32 @@ public sealed class Executor
 
             _log.WriteRaw($"==> {spec.Name}");
             var sw = Stopwatch.StartNew();
+            var swStartTicks = Stopwatch.GetTimestamp();
+            var allocAtStart = GC.GetTotalAllocatedBytes(precise: false);
+            var gen0AtStart = GC.CollectionCount(0);
+            var gen1AtStart = GC.CollectionCount(1);
+            var gen2AtStart = GC.CollectionCount(2);
+            TimeSpan cpuAtStart;
+            long workingSetAtStart;
+            try { using var p = Process.GetCurrentProcess(); workingSetAtStart = p.WorkingSet64; cpuAtStart = p.TotalProcessorTime; }
+            catch { workingSetAtStart = 0; cpuAtStart = TimeSpan.Zero; }
+            var actionsCount = spec.Actions.Count;
+            var commandsForThisTarget = 0;
+
+            // ── Diagnostics: per-target span (ADR 0018). Tags are populated at known points;
+            // status is set on the activity at end of try/catch.
+            using var targetSpan = TampDiagnostics.TargetsSource.StartActivity($"target:{spec.Name}", ActivityKind.Internal);
+            if (targetSpan is not null)
+            {
+                targetSpan.SetTag(TampDiagnostics.Tags.TargetName, spec.Name);
+                targetSpan.SetTag(TampDiagnostics.Tags.TargetPhase, spec.Phase.ToString());
+                if (spec.Dependencies.Count > 0) targetSpan.SetTag(TampDiagnostics.Tags.TargetDependsOn, string.Join(",", spec.Dependencies));
+                if (spec.AssuredAfterFailure) targetSpan.SetTag(TampDiagnostics.Tags.TargetIsAssuredAfterFailure, true);
+                targetSpan.SetTag(TampDiagnostics.Tags.TargetStartWorkingSetBytes, workingSetAtStart);
+                targetSpan.SetTag(TampDiagnostics.Tags.TargetFailureMode, spec.FailureMode.ToString());
+                targetSpan.SetTag(TampDiagnostics.Tags.TargetAttempt, 1);                  // reserved; bumps when retry mode lands
+                targetSpan.SetTag(TampDiagnostics.Tags.TargetActionsCount, actionsCount);
+            }
 
             try
             {
@@ -192,13 +251,16 @@ public sealed class Executor
                     foreach (var plan in factory())
                     {
                         _redactionTable.RegisterAll(plan);
-                        exit = ProcessRunner.Execute(plan, _redactedOutput, _redactedOutput);
+                        commandsForThisTarget++;
+                        commandsDispatchedCount++;
+                        exit = ProcessRunner.Execute(plan, _redactedOutput, _redactedOutput, sourceTargetName: spec.Name);
                         if (exit != 0)
                         {
                             _log.WriteRaw($"==> {spec.Name} FAILED (exit {exit})");
                             if (spec.FailureMode == FailureMode.Continue) continue;
                             sw.Stop();
                             records.Add(TargetExecutionRecord.Failed(spec.Name, sw.Elapsed, $"exit {exit}"));
+                                        EmitTargetTerminal(targetSpan, spec, sw.Elapsed, swStartTicks, allocAtStart, workingSetAtStart, gen0AtStart, gen1AtStart, gen2AtStart, cpuAtStart, commandsForThisTarget, TampDiagnostics.Tags.OutcomeFailure, $"exit {exit}");
                             if (!buildFailedAt.HasValue)
                             {
                                 buildFailedAt = (spec.Name, exit);
@@ -211,18 +273,21 @@ public sealed class Executor
 
                 sw.Stop();
                 records.Add(TargetExecutionRecord.Done(spec.Name, sw.Elapsed));
+                EmitTargetTerminal(targetSpan, spec, sw.Elapsed, swStartTicks, allocAtStart, workingSetAtStart, gen0AtStart, gen1AtStart, gen2AtStart, cpuAtStart, commandsForThisTarget, TampDiagnostics.Tags.OutcomeSuccess);
             }
             catch (Exception ex) when (spec.FailureMode == FailureMode.Continue)
             {
                 sw.Stop();
                 _log.WriteRaw($"==> {spec.Name} threw {ex.GetType().Name}; continuing per FailureMode.Continue: {ex.Message}");
                 records.Add(TargetExecutionRecord.Done(spec.Name, sw.Elapsed));
+                EmitTargetTerminal(targetSpan, spec, sw.Elapsed, swStartTicks, allocAtStart, workingSetAtStart, gen0AtStart, gen1AtStart, gen2AtStart, cpuAtStart, commandsForThisTarget, TampDiagnostics.Tags.OutcomeSuccess);
             }
             catch (Exception ex)
             {
                 sw.Stop();
                 _log.WriteRaw($"==> {spec.Name} threw {ex.GetType().Name}: {ex.Message}");
                 records.Add(TargetExecutionRecord.Failed(spec.Name, sw.Elapsed, ex.Message));
+                EmitTargetTerminal(targetSpan, spec, sw.Elapsed, swStartTicks, allocAtStart, workingSetAtStart, gen0AtStart, gen1AtStart, gen2AtStart, cpuAtStart, commandsForThisTarget, TampDiagnostics.Tags.OutcomeFailure, $"{ex.GetType().Name}: {ex.Message}");
                 if (!buildFailedAt.HasValue)
                 {
                     buildFailedAt = (spec.Name, 1);
@@ -238,10 +303,70 @@ public sealed class Executor
         _log.Flush();
 
         var traversed = records.Count(r => r.Status is not TargetStatus.NotRun);
+        var buildExitCode = buildFailedAt?.ExitCode ?? 0;
+        var buildEndTicks = Stopwatch.GetTimestamp();
+        var buildDurationNs = (long)((buildEndTicks - buildSwStartTicks) * 1_000_000_000.0 / Stopwatch.Frequency);
+
+        long peakWorkingSetBytes = 0;
+        try { using var p = Process.GetCurrentProcess(); peakWorkingSetBytes = p.PeakWorkingSet64; } catch { }
+
+        var succeeded = records.Count(r => r.Status == TargetStatus.Done);
+        var failed = records.Count(r => r.Status == TargetStatus.Failed);
+        var skippedCount = records.Count(r => r.Status == TargetStatus.Skipped);
+        var notRun = records.Count(r => r.Status == TargetStatus.NotRun);
+
+        // ── Diagnostics: close out the root build span + counters.
+        var buildOutcome = buildExitCode == 0
+            ? TampDiagnostics.Tags.OutcomeSuccess
+            : TampDiagnostics.Tags.OutcomeFailure;
+
+        if (buildSpan is not null)
+        {
+            buildSpan.SetTag(TampDiagnostics.Tags.BuildExitCode, buildExitCode);
+            buildSpan.SetTag(TampDiagnostics.Tags.OutcomeKey, buildOutcome);
+            buildSpan.SetTag(TampDiagnostics.Tags.BuildDurationNs, buildDurationNs);
+            buildSpan.SetTag(TampDiagnostics.Tags.BuildPeakWorkingSetBytes, peakWorkingSetBytes);
+            buildSpan.SetTag(TampDiagnostics.Tags.BuildTargetsTotal, records.Count);
+            buildSpan.SetTag(TampDiagnostics.Tags.BuildTargetsSucceeded, succeeded);
+            buildSpan.SetTag(TampDiagnostics.Tags.BuildTargetsFailed, failed);
+            buildSpan.SetTag(TampDiagnostics.Tags.BuildTargetsSkipped, skippedCount);
+            buildSpan.SetTag(TampDiagnostics.Tags.BuildTargetsNotRun, notRun);
+            buildSpan.SetTag(TampDiagnostics.Tags.BuildCommandsTotal, commandsDispatchedCount);
+            if (buildFailedAt is { Name: var failedName2, ExitCode: var failedExit })
+            {
+                buildSpan.SetTag(TampDiagnostics.Tags.BuildFailureTarget, failedName2);
+                buildSpan.SetTag(TampDiagnostics.Tags.BuildFailureExitCode, failedExit);
+                buildSpan.SetStatus(ActivityStatusCode.Error, $"failed at: {failedName2}");
+            }
+            else
+            {
+                buildSpan.SetStatus(ActivityStatusCode.Ok);
+            }
+            if (handlersInvoked.Count > 0)
+                buildSpan.SetTag(TampDiagnostics.Tags.BuildFailureHandlersInvoked, string.Join(",", handlersInvoked));
+
+            // Structured snapshot — single event, easy to grep / dashboard.
+            buildSpan.AddEvent(new ActivityEvent("tamp.build.summary", tags: new ActivityTagsCollection
+            {
+                [TampDiagnostics.Tags.BuildTargetsTotal] = records.Count,
+                [TampDiagnostics.Tags.BuildTargetsSucceeded] = succeeded,
+                [TampDiagnostics.Tags.BuildTargetsFailed] = failed,
+                [TampDiagnostics.Tags.BuildTargetsSkipped] = skippedCount,
+                [TampDiagnostics.Tags.BuildTargetsNotRun] = notRun,
+                [TampDiagnostics.Tags.BuildCommandsTotal] = commandsDispatchedCount,
+                [TampDiagnostics.Tags.BuildExitCode] = buildExitCode,
+                [TampDiagnostics.Tags.OutcomeKey] = buildOutcome,
+            }));
+        }
+
+        TampDiagnostics.BuildsTotal.Add(1, new KeyValuePair<string, object?>(TampDiagnostics.Tags.OutcomeKey, buildOutcome));
+        TampDiagnostics.BuildDurationMs.Record(buildSw.Elapsed.TotalMilliseconds, new KeyValuePair<string, object?>(TampDiagnostics.Tags.OutcomeKey, buildOutcome));
+        TampDiagnostics.BuildPeakMemoryBytes.Record(peakWorkingSetBytes, new KeyValuePair<string, object?>(TampDiagnostics.Tags.OutcomeKey, buildOutcome));
+
         return new ExecutionResult
         {
             Mode = Mode,
-            ExitCode = buildFailedAt?.ExitCode ?? 0,
+            ExitCode = buildExitCode,
             TargetsTraversed = traversed,
             FailedTarget = buildFailedAt?.Name,
             FailureHandlersInvoked = handlersInvoked,
@@ -249,6 +374,85 @@ public sealed class Executor
             ExecutionRecords = records,
             Duration = buildSw.Elapsed,
         };
+    }
+
+    /// <summary>
+    /// Finalize a per-target activity and emit the matching metric samples.
+    /// Centralized so success / failure / continue-on-failure paths emit identically.
+    /// Includes high-res timing (Stopwatch ticks → nanoseconds), memory deltas,
+    /// per-target GC-collection counts, CPU time, and command/action counts.
+    /// </summary>
+    private static void EmitTargetTerminal(
+        Activity? span,
+        TargetSpec spec,
+        TimeSpan elapsed,
+        long swStartTicks,
+        long allocAtStart,
+        long workingSetAtStart,
+        int gen0AtStart,
+        int gen1AtStart,
+        int gen2AtStart,
+        TimeSpan cpuAtStart,
+        int commandsCount,
+        string outcome,
+        string? errorMessage = null)
+    {
+        var endTicks = Stopwatch.GetTimestamp();
+        var durationNs = (long)((endTicks - swStartTicks) * 1_000_000_000.0 / Stopwatch.Frequency);
+        var allocDelta = System.Math.Max(0, GC.GetTotalAllocatedBytes(precise: false) - allocAtStart);
+        var gen0Delta = GC.CollectionCount(0) - gen0AtStart;
+        var gen1Delta = GC.CollectionCount(1) - gen1AtStart;
+        var gen2Delta = GC.CollectionCount(2) - gen2AtStart;
+        long workingSetAtEnd;
+        double cpuDeltaMs;
+        try
+        {
+            using var p = Process.GetCurrentProcess();
+            workingSetAtEnd = p.WorkingSet64;
+            cpuDeltaMs = (p.TotalProcessorTime - cpuAtStart).TotalMilliseconds;
+        }
+        catch { workingSetAtEnd = 0; cpuDeltaMs = 0; }
+
+        if (span is not null)
+        {
+            span.SetTag(TampDiagnostics.Tags.TargetStatus, outcome);
+            span.SetTag(TampDiagnostics.Tags.TargetDurationNs, durationNs);
+            span.SetTag(TampDiagnostics.Tags.TargetEndWorkingSetBytes, workingSetAtEnd);
+            span.SetTag(TampDiagnostics.Tags.TargetGcAllocatedBytes, allocDelta);
+            span.SetTag(TampDiagnostics.Tags.TargetGcGen0Collections, gen0Delta);
+            span.SetTag(TampDiagnostics.Tags.TargetGcGen1Collections, gen1Delta);
+            span.SetTag(TampDiagnostics.Tags.TargetGcGen2Collections, gen2Delta);
+            span.SetTag(TampDiagnostics.Tags.TargetCpuTimeMs, cpuDeltaMs);
+            span.SetTag(TampDiagnostics.Tags.TargetCommandsCount, commandsCount);
+            span.SetTag(TampDiagnostics.Tags.TargetAttemptsTotal, 1);                       // reserved; retry-mode bumps later
+            span.SetStatus(outcome == TampDiagnostics.Tags.OutcomeSuccess ? ActivityStatusCode.Ok : ActivityStatusCode.Error, errorMessage);
+        }
+        TampDiagnostics.TargetsExecuted.Add(1,
+            new KeyValuePair<string, object?>(TampDiagnostics.Tags.TargetName, spec.Name),
+            new KeyValuePair<string, object?>(TampDiagnostics.Tags.OutcomeKey, outcome));
+        TampDiagnostics.TargetDurationMs.Record(elapsed.TotalMilliseconds,
+            new KeyValuePair<string, object?>(TampDiagnostics.Tags.TargetName, spec.Name),
+            new KeyValuePair<string, object?>(TampDiagnostics.Tags.OutcomeKey, outcome));
+        TampDiagnostics.TargetGcAllocatedBytes.Record(allocDelta,
+            new KeyValuePair<string, object?>(TampDiagnostics.Tags.TargetName, spec.Name),
+            new KeyValuePair<string, object?>(TampDiagnostics.Tags.OutcomeKey, outcome));
+    }
+
+    /// <summary>Emit a zero-duration "skipped" activity so dashboards see every plan-position, not just the executed ones.</summary>
+    private static void EmitSkippedTargetActivity(TargetSpec spec, string reason)
+    {
+        using var span = TampDiagnostics.TargetsSource.StartActivity($"target:{spec.Name}", ActivityKind.Internal);
+        if (span is not null)
+        {
+            span.SetTag(TampDiagnostics.Tags.TargetName, spec.Name);
+            span.SetTag(TampDiagnostics.Tags.TargetPhase, spec.Phase.ToString());
+            span.SetTag(TampDiagnostics.Tags.TargetStatus, TampDiagnostics.Tags.OutcomeSkipped);
+            span.SetTag(TampDiagnostics.Tags.TargetSkipReason, reason);
+            span.SetStatus(ActivityStatusCode.Ok);
+        }
+        TampDiagnostics.TargetsExecuted.Add(1,
+            new KeyValuePair<string, object?>(TampDiagnostics.Tags.TargetName, spec.Name),
+            new KeyValuePair<string, object?>(TampDiagnostics.Tags.OutcomeKey, TampDiagnostics.Tags.OutcomeSkipped));
     }
 
     /// <summary>Returns the failure reason (for human display) when an OnlyWhen condition rejects a target; null otherwise.</summary>

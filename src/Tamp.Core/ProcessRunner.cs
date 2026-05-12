@@ -1,4 +1,5 @@
 using System.Diagnostics;
+using Tamp.Diagnostics;
 
 namespace Tamp;
 
@@ -78,7 +79,16 @@ public static class ProcessRunner
     }
 
     /// <summary>Spawn the process described by <paramref name="plan"/> and wait for exit.</summary>
-    public static int Execute(CommandPlan plan, TextWriter? stdout = null, TextWriter? stderr = null)
+    /// <param name="plan">The plan to execute.</param>
+    /// <param name="stdout">Stdout sink; defaults to <see cref="Console.Out"/>.</param>
+    /// <param name="stderr">Stderr sink; defaults to <see cref="Console.Error"/>.</param>
+    /// <param name="sourceTargetName">
+    /// Optional name of the Tamp target dispatching this plan. Surfaced as the
+    /// <c>tamp.cmd.source_target</c> tag on the diagnostics span so consumers
+    /// can correlate command spans with parent target spans without relying
+    /// solely on the activity context chain.
+    /// </param>
+    public static int Execute(CommandPlan plan, TextWriter? stdout = null, TextWriter? stderr = null, string? sourceTargetName = null)
     {
         if (plan is null) throw new ArgumentNullException(nameof(plan));
 
@@ -100,9 +110,33 @@ public static class ProcessRunner
         foreach (var (k, v) in plan.Environment)
             psi.Environment[k] = v;
 
+        // ── Diagnostics: per-command span (ADR 0018).
+        using var span = TampDiagnostics.CommandsSource.StartActivity($"command:{plan.Executable}", ActivityKind.Client);
+        if (span is not null)
+        {
+            span.SetTag(TampDiagnostics.Tags.CmdExecutable, plan.Executable);
+            span.SetTag(TampDiagnostics.Tags.CmdArgsCount, plan.Arguments.Count);
+            if (plan.WorkingDirectory is not null) span.SetTag(TampDiagnostics.Tags.CmdWorkingDirectory, plan.WorkingDirectory);
+            span.SetTag(TampDiagnostics.Tags.CmdHadStdin, plan.StandardInput is not null);
+            span.SetTag(TampDiagnostics.Tags.CmdHadSecrets, plan.Secrets.Count > 0);
+            if (sourceTargetName is not null) span.SetTag(TampDiagnostics.Tags.CmdSourceTarget, sourceTargetName);
+        }
+        var cmdStartTicks = Stopwatch.GetTimestamp();
+        long stdoutBytes = 0, stderrBytes = 0;
+
         using var process = new Process { StartInfo = psi };
-        process.OutputDataReceived += (_, e) => { if (e.Data is not null) stdoutSink.WriteLine(e.Data); };
-        process.ErrorDataReceived += (_, e) => { if (e.Data is not null) stderrSink.WriteLine(e.Data); };
+        process.OutputDataReceived += (_, e) =>
+        {
+            if (e.Data is null) return;
+            System.Threading.Interlocked.Add(ref stdoutBytes, System.Text.Encoding.UTF8.GetByteCount(e.Data) + System.Environment.NewLine.Length);
+            stdoutSink.WriteLine(e.Data);
+        };
+        process.ErrorDataReceived += (_, e) =>
+        {
+            if (e.Data is null) return;
+            System.Threading.Interlocked.Add(ref stderrBytes, System.Text.Encoding.UTF8.GetByteCount(e.Data) + System.Environment.NewLine.Length);
+            stderrSink.WriteLine(e.Data);
+        };
         process.Start();
         process.BeginOutputReadLine();
         process.BeginErrorReadLine();
@@ -112,6 +146,58 @@ public static class ProcessRunner
             process.StandardInput.Close();
         }
         process.WaitForExit();
+
+        // After-exit child-process tags. Reading these requires the Process object
+        // to still hold the handle — safe here because we haven't disposed yet.
+        long peakWs = 0, privateMem = 0, virtualMem = 0;
+        double cpuUserMs = 0, cpuSysMs = 0, cpuTotalMs = 0;
+        int threadCount = 0, handleCount = 0;
+        try
+        {
+            peakWs = process.PeakWorkingSet64;
+            privateMem = process.PrivateMemorySize64;
+            virtualMem = process.VirtualMemorySize64;
+            cpuUserMs = process.UserProcessorTime.TotalMilliseconds;
+            cpuSysMs = process.PrivilegedProcessorTime.TotalMilliseconds;
+            cpuTotalMs = process.TotalProcessorTime.TotalMilliseconds;
+            threadCount = process.Threads.Count;
+        }
+        catch { /* some platforms restrict these; ignore */ }
+        try { handleCount = process.HandleCount; } catch { /* Windows-only */ }
+
+        var endTicks = Stopwatch.GetTimestamp();
+        var durationNs = (long)((endTicks - cmdStartTicks) * 1_000_000_000.0 / Stopwatch.Frequency);
+        var durationMs = durationNs / 1_000_000.0;
+        var outcome = process.ExitCode == 0 ? TampDiagnostics.Tags.OutcomeSuccess : TampDiagnostics.Tags.OutcomeFailure;
+
+        if (span is not null)
+        {
+            span.SetTag(TampDiagnostics.Tags.CmdExitCode, process.ExitCode);
+            span.SetTag(TampDiagnostics.Tags.CmdDurationNs, durationNs);
+            span.SetTag(TampDiagnostics.Tags.CmdChildPeakWorkingSetBytes, peakWs);
+            span.SetTag(TampDiagnostics.Tags.CmdChildPrivateMemoryBytes, privateMem);
+            span.SetTag(TampDiagnostics.Tags.CmdChildVirtualMemoryBytes, virtualMem);
+            span.SetTag(TampDiagnostics.Tags.CmdChildCpuTimeUserMs, cpuUserMs);
+            span.SetTag(TampDiagnostics.Tags.CmdChildCpuTimeSystemMs, cpuSysMs);
+            span.SetTag(TampDiagnostics.Tags.CmdChildCpuTimeTotalMs, cpuTotalMs);
+            span.SetTag(TampDiagnostics.Tags.CmdChildThreadCount, threadCount);
+            span.SetTag(TampDiagnostics.Tags.CmdChildHandleCount, handleCount);
+            span.SetTag(TampDiagnostics.Tags.CmdStdoutBytes, stdoutBytes);
+            span.SetTag(TampDiagnostics.Tags.CmdStderrBytes, stderrBytes);
+            span.SetTag(TampDiagnostics.Tags.OutcomeKey, outcome);
+            span.SetStatus(outcome == TampDiagnostics.Tags.OutcomeSuccess ? ActivityStatusCode.Ok : ActivityStatusCode.Error,
+                outcome == TampDiagnostics.Tags.OutcomeSuccess ? null : $"exit {process.ExitCode}");
+        }
+        TampDiagnostics.CommandsExecuted.Add(1,
+            new KeyValuePair<string, object?>(TampDiagnostics.Tags.CmdExecutable, plan.Executable),
+            new KeyValuePair<string, object?>(TampDiagnostics.Tags.OutcomeKey, outcome));
+        TampDiagnostics.CommandDurationMs.Record(durationMs,
+            new KeyValuePair<string, object?>(TampDiagnostics.Tags.CmdExecutable, plan.Executable),
+            new KeyValuePair<string, object?>(TampDiagnostics.Tags.OutcomeKey, outcome));
+        TampDiagnostics.CommandPeakMemoryBytes.Record(peakWs,
+            new KeyValuePair<string, object?>(TampDiagnostics.Tags.CmdExecutable, plan.Executable),
+            new KeyValuePair<string, object?>(TampDiagnostics.Tags.OutcomeKey, outcome));
+
         return process.ExitCode;
     }
 

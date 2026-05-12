@@ -8,6 +8,76 @@ Pre-1.0 versions may break public API freely between minor versions; the `0.x` l
 
 ## [Unreleased]
 
+## [1.4.0] — 2026-05-12 — `tamp init` scaffolder + diagnostics emission contract (additive)
+
+### Added — diagnostics emission via `System.Diagnostics.ActivitySource` (ADR 0018)
+
+Tamp.Core now emits native OTel-compatible activity spans + meter signals from build execution, with **zero new dependencies** — uses only the .NET BCL. Same pattern ASP.NET Core uses; adopters wire up OpenTelemetry (or any other backend) by subscribing to the source names. The `Tamp.Otel` satellite (forthcoming) is a sub-100-line convenience that calls `AddSource("Tamp.Build.*")`; in-house pipelines can subscribe directly.
+
+**Three activity sources** (consumers subscribe to any subset):
+- `Tamp.Build` — root span per build invocation
+- `Tamp.Build.Targets` — one span per executed target
+- `Tamp.Build.Commands` — one span per `CommandPlan` dispatched
+
+**One meter** (`Tamp.Build`) — counters for builds/targets/commands executed, histograms for durations, peak memory, GC allocations.
+
+**Tags emitted include** (full taxonomy in ADR 0018):
+- **Build span:** target plan, exit code, outcome, host facets (os/arch/cpu/memory), .NET runtime, CI vendor detection, outcome counts (succeeded/failed/skipped/not_run), failure pointer, high-res `duration_ns`, peak working set, failure-handler list.
+- **Target span:** name, phase, status, deps, failure mode, duration_ns, start/end working-set RSS, GC allocations + gen0/gen1/gen2 collection counts, CPU time, action/command counts, attempt number (retry-mode reserved).
+- **Command span:** executable, args count (never the args themselves — secret-leak surface), working dir, exit code, source target, duration_ns, child-process peak/private/virtual memory, child CPU times (user/system/total), thread/handle counts, stdout/stderr byte counts, had-stdin/had-secrets flags.
+
+**Activity events:** `tamp.build.summary` snapshot event on the root span.
+
+**Polyrepo project identification:** new `[BuildProject(Name=..., Area=...)]` attribute on the build class — **language-agnostic; pure-JS, Python, Rust, or mixed-stack builds use it identically to .NET builds**. Designed for products spread across multiple repos (HoldFast frontend / backend / infra; Strata api / functions / spa) — surfaces as `tamp.build.project.name` / `tamp.build.project.area` tags on the root span. Fallback chain when the attribute is absent: `[Solution]` filename if the build script happens to declare one (.NET-only sweetener; silently skipped otherwise) → repo directory name (works for any stack) → `"unknown"`. The recovery path is itself a tag (`tamp.build.project.name_source = attribute / solution / repodirectory / default`) so consumers can tell which fallback fired. Tamp does NOT require a .slnx / .sln to function — the build script itself is .NET (that's the framework's runtime), but what it builds can be anything (Yarn workspaces, Python packages, Rust crates, Helm charts, raw shell). The `Tamp.Otel` satellite maps the resulting tags to `service.name` / `service.namespace` OTel resource attributes at subscription time.
+
+**Stability contract:** source names, span operation names, tag keys, and outcome vocabulary are pinned by ADR 0018 and verified by unit tests (`TampDiagnosticsEmissionTests`, `BuildProjectInfoTests`). Renaming or removing any tag is a breaking change requiring an ADR amendment. Additions are non-breaking and welcome.
+
+**Zero-overhead when nothing subscribes:** `ActivitySource.StartActivity` returns null with no listeners; all tag-setters are null-guarded.
+
+**Privacy by construction:** `plan.Arguments` content, env-var values, and stdin content never become tag values. Counts and metadata only.
+
+### Added — Wave 10 (bootstrapping epic, v0.1.0 scope)
+
+- **`tamp init`** — `Tamp.Cli` / `dotnet-tamp` gain a new top-level `init` subcommand that scaffolds a Tamp build into the current directory. Three files land:
+  - `build/Build.cs` — minimal Build script using the 1.3.0 surface (`.Default()`, `.Internal()`, `CleanArtifacts()`, target-typed `DependsOn`)
+  - `build/Build.csproj` — pins `Tamp.Core` and `Tamp.NetCli.V10` at the CLI's own version
+  - `.config/dotnet-tools.json` — registers `dotnet-tamp` as a local tool (only if absent — existing tool manifests are preserved)
+
+  Works offline by construction; the minimal template is embedded in the CLI binary. The federal / locked-down-environment on-ramp keeps working.
+
+  ```
+  cd your-empty-repo
+  dotnet tool install -g dotnet-tamp
+  dotnet tamp init
+  dotnet tool restore && dotnet tamp Test
+  ```
+
+- **Solution detection** — `DotnetSolutionProbe` finds a single `.slnx` (or `.sln`) at the repo root and reports the detection result. Zero / multiple solution layouts surface via a probe-diagnostic message and the generated `Build.cs` falls back to `[Solution]` auto-discovery.
+
+- **Idempotency** — `tamp init` refuses to overwrite an existing `build/Build.cs`. `--force` reserved for 0.2.0.
+
+- **Flags** (v0.1.0): `--solution <path>`, `--dry-run`, `--list-templates`, `--help`.
+
+- **Reserved flags** (parsed with helpful errors; implementations land in later versions): `--template <name>` (0.2.0), `--template-source <pkg>` (0.2.0), `--offline` (0.2.0), `--force` (0.2.0), `--with-ci <vendor>` (0.3.0), `--interactive` (0.4.0).
+
+### Extension architecture (forward-looking, v0.2.0+)
+
+The scaffolding stack is structured around two abstractions so future expansion is additive, not a refactor:
+
+- **`IScaffoldTemplate`** — declares its `Name`, `Description`, and `MinimumTampCoreVersion`. Future templates implement this without touching the `init` command.
+- **`IScaffoldTemplateSource`** — pluggable provider of templates. v0.1.0 ships:
+  - `EmbeddedTemplateSource` (real) — the minimal template baked into the CLI binary, offline-capable.
+  - `NuGetTemplateSource` (stub; throws with a clean "lands in 0.2.0" message) — the slot reserved for the NuGet-distributed template channel. When the implementation lands, `Tamp.Templates.Fullstack` / `Tamp.Templates.AspNet` / community packages become available via `tamp init --template <name>`. CLI registers sources in priority order (embedded first → offline on-ramp guarantee preserved).
+- **`IRepoProbe`** — discovers facts about the working dir, contributes to `ScaffoldContext`. v0.1.0 ships `DotnetSolutionProbe`; future probes (`YarnWorkspaceProbe`, `DockerfileProbe`, `HelmChartProbe`) layer in additively.
+- **Drift protection** — every template declares `MinimumTampCoreVersion`; CLI refuses on mismatch with an upgrade message. Template version skew across the ecosystem is bounded.
+
+### Documentation
+
+- Wiki **[Getting-Started](https://github.com/tamp-build/tamp/wiki/Getting-Started)** rewritten around `tamp init` as the three-line on-ramp.
+- **`docs/sketches/tamp-init-v0.1.0.md`** captures the v0.1.0 scope ceiling, the extension architecture, and the v0.2.0 preview.
+
+[1.4.0]: https://github.com/tamp-build/tamp/releases/tag/v1.4.0
+
 ## [1.3.0] — 2026-05-12 — `params Target[]` overloads + HoldFast cutover surface (additive)
 
 ### Added — TAM-162

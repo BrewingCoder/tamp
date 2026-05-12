@@ -340,7 +340,15 @@ public abstract partial class TampBuild
 
             PrintBanner(Console.Out);
 
-            var executor = new Executor(graph, mode, output: null, verbosity);
+            // Resolve project info for diagnostics (ADR 0018):
+            // [BuildProject] attribute > [Solution] filename > repo dir name > "unknown".
+            var solutionPath = build.ResolveInjectedSolution()?.Path.Value;
+            var projectInfo = Tamp.Diagnostics.BuildProjectInfo.Resolve(
+                typeof(T),
+                solutionPath,
+                RootDirectory.Value);
+
+            var executor = new Executor(graph, mode, output: null, verbosity, projectInfo);
             return executor.Run(targetNames.ToArray()).ExitCode;
         }
         catch (InvalidOperationException ex)

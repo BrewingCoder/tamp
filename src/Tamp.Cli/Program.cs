@@ -1,4 +1,5 @@
 using System.Diagnostics;
+using Tamp.Cli.Scaffold.Commands;
 
 namespace Tamp.Cli;
 
@@ -25,6 +26,17 @@ internal static class Program
         {
             PrintHelp();
             return 0;
+        }
+
+        // Built-in subcommands handled by the CLI itself (no build-project dispatch).
+        // `init` scaffolds a new Build.cs into the current directory — by design it runs
+        // BEFORE a build project exists, so the BuildProjectLocator-based forwarder is
+        // skipped.
+        if (args.Length > 0 && args[0] == "init")
+        {
+            var initArgs = new string[args.Length - 1];
+            System.Array.Copy(args, 1, initArgs, 0, initArgs.Length);
+            return InitCommand.Run(initArgs);
         }
 
         var cwd = Environment.CurrentDirectory;
@@ -84,6 +96,7 @@ internal static class Program
         Console.WriteLine("tamp — small-core, plugin-driven build automation framework");
         Console.WriteLine();
         Console.WriteLine("USAGE:");
+        Console.WriteLine("  dotnet tamp init [--solution <path>] [--dry-run]    scaffold Build.cs into the current dir");
         Console.WriteLine("  dotnet tamp <target> [--dry-run | --plan | --list | --list-tree] [--<param> <value>]");
         Console.WriteLine("  dotnet tamp --version | --help");
         Console.WriteLine();
