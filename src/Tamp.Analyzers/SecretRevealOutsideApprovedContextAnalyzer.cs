@@ -78,12 +78,12 @@ public sealed class SecretRevealOutsideApprovedContextAnalyzer : DiagnosticAnaly
         var className = classDeclSymbol.Name;
         var ns = classDeclSymbol.ContainingNamespace?.ToDisplayString() ?? "";
 
-        if (IsApprovedContext(className, ns)) return;
+        if (IsApprovedContext(className, ns, classDeclSymbol)) return;
 
         context.ReportDiagnostic(Diagnostic.Create(Rule, invocation.GetLocation(), className));
     }
 
-    private static bool IsApprovedContext(string className, string ns)
+    private static bool IsApprovedContext(string className, string ns, INamedTypeSymbol classSymbol)
     {
         // Approved class-name shapes — wrapper settings (canonical Tamp pattern).
         if (className.EndsWith("Settings", System.StringComparison.Ordinal)) return true;
@@ -97,6 +97,15 @@ public sealed class SecretRevealOutsideApprovedContextAnalyzer : DiagnosticAnaly
         // Test code — anywhere with .Tests in the namespace or class name ending Tests.
         if (className.EndsWith("Tests", System.StringComparison.Ordinal)) return true;
         if (ns.Contains(".Tests")) return true;
+
+        // Tamp.Core 1.7.0+ — explicit inheritance from WrapperSettingsBase (TAM-197).
+        // Walks the inheritance chain looking for Tamp.WrapperSettingsBase.
+        for (var t = classSymbol.BaseType; t is not null; t = t.BaseType)
+        {
+            if (t.Name == "WrapperSettingsBase"
+                && t.ContainingNamespace?.ToDisplayString() == "Tamp")
+                return true;
+        }
 
         return false;
     }

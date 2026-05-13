@@ -11,7 +11,7 @@ namespace Tamp.Analyzers.Tests;
 
 public sealed class SecretRevealOutsideApprovedContextAnalyzerTests
 {
-    // Minimal stub mirroring the 1.6.0 Tamp.Secret surface.
+    // Minimal stub mirroring the 1.6.0 Tamp.Secret + 1.7.0 Tamp.WrapperSettingsBase surface.
     private const string StubSource = """
         namespace Tamp
         {
@@ -21,6 +21,12 @@ public sealed class SecretRevealOutsideApprovedContextAnalyzerTests
                 public string Name { get; }
                 public string Reveal() => "";   // public as of 1.6.0
                 public override string ToString() => $"<Secret:{Name}>";
+            }
+
+            // 1.7.0+ — TAM-197. Inheritance-based opt-in to the TAMP004 approved-context heuristic.
+            public abstract class WrapperSettingsBase
+            {
+                protected static string Reveal(Secret secret) => secret.Reveal();
             }
         }
         """;
@@ -277,5 +283,66 @@ public sealed class SecretRevealOutsideApprovedContextAnalyzerTests
             """;
         var diags = await RunAsync(source);
         Assert.Equal(2, diags.Count(d => d.Id == "TAMP004"));
+    }
+
+    // ─── 1.7.0 — inheritance from WrapperSettingsBase (TAM-197) ──────────
+
+    [Fact]
+    public async Task WrapperSettingsBase_Inheritance_Is_Approved()
+    {
+        // A class whose name does NOT end in *Settings, but DOES inherit from
+        // Tamp.WrapperSettingsBase, is approved by the inheritance heuristic.
+        var source = """
+            using Tamp;
+            namespace ThirdParty
+            {
+                public class MyArbitrarilyNamedThing : WrapperSettingsBase {
+                    public string Build(Secret s) => s.Reveal();
+                }
+            }
+            """;
+        var diags = await RunAsync(source);
+        Assert.Empty(diags.Where(d => d.Id == "TAMP004"));
+    }
+
+    [Fact]
+    public async Task Indirect_WrapperSettingsBase_Inheritance_Is_Approved()
+    {
+        // Multi-level inheritance still resolves through the chain.
+        var source = """
+            using Tamp;
+            namespace ThirdParty
+            {
+                public abstract class MyMidLayer : WrapperSettingsBase { }
+                public class WeirdName : MyMidLayer {
+                    public string Build(Secret s) => s.Reveal();
+                }
+            }
+            """;
+        var diags = await RunAsync(source);
+        Assert.Empty(diags.Where(d => d.Id == "TAMP004"));
+    }
+
+    [Fact]
+    public async Task Class_Named_WrapperSettingsBase_Outside_Tamp_Namespace_Does_Not_Auto_Approve()
+    {
+        // The analyzer checks both the type name AND the namespace —
+        // a third-party class accidentally named WrapperSettingsBase isn't approved.
+        // (Class-name heuristic still catches *SettingsBase though, so this contrived
+        //  example doesn't fire either. Use a different name to expose the gap.)
+        var source = """
+            using Tamp;
+            namespace ThirdParty
+            {
+                // Note: name doesn't end in Settings/SettingsBase, and the impostor
+                // base lives outside the Tamp namespace so it isn't recognized.
+                public class FakeBase { }
+                public class ImpostorChild : FakeBase {
+                    public string Build(Secret s) => s.Reveal();
+                }
+            }
+            """;
+        var diags = await RunAsync(source);
+        Assert.Single(diags.Where(d => d.Id == "TAMP004"));
     }
 }

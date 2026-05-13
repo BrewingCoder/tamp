@@ -8,6 +8,46 @@ Pre-1.0 versions may break public API freely between minor versions; the `0.x` l
 
 ## [Unreleased]
 
+## [1.7.0] — 2026-05-13 — `WrapperSettingsBase` inheritance helper (TAM-197)
+
+### Added
+
+- **`public abstract class WrapperSettingsBase`** in `Tamp.Core` — optional base
+  class for satellite wrapper settings classes that handle `Secret` values.
+  Exposes a `protected static string Reveal(Secret)` helper. Inheritance from
+  this base is now an additional approved context for the
+  [TAMP004](https://github.com/tamp-build/tamp/wiki/Tamp-Analyzers#tamp004)
+  analyzer.
+
+  Discovery benefit: new contributors see "what's the canonical way to reveal
+  a secret for a CommandPlan?" in the type system rather than only in analyzer
+  documentation. Adopters can derive arbitrarily-named classes (not just
+  `*Settings` / `*SettingsBase`) and still pass TAMP004 via the inheritance
+  heuristic.
+
+- **TAMP004 analyzer** extended to walk the inheritance chain — any class
+  deriving (directly or transitively) from `Tamp.WrapperSettingsBase` is
+  treated as approved regardless of its class name. Pure additive change; the
+  existing `*Settings` / `*SettingsBase` name heuristic still works for
+  non-deriving classes.
+
+  4 new analyzer tests cover the inheritance path: direct inheritance with a
+  non-`*Settings`-suffixed name, transitive inheritance through a mid-layer,
+  and the negative case where an impostor `FakeBase` outside the `Tamp`
+  namespace doesn't auto-approve a derived class.
+
+### Migration
+
+- **No retrofit required.** Existing satellites continue to work via the
+  `*Settings` / `*SettingsBase` name heuristic. New satellites can opt in to
+  `WrapperSettingsBase` inheritance if they prefer type-system-level
+  blessing over the name heuristic.
+
+- Pre-1.7.0 satellites that want stronger discipline can migrate at their own
+  cadence. The migration is a single base-class change in the `*SettingsBase`
+  file (`public abstract class FooSettingsBase : Tamp.WrapperSettingsBase`)
+  + replacing `secret.Reveal()` call sites with `Reveal(secret)`.
+
 ## [1.6.0] — 2026-05-13 — kill the IVT-bump-per-satellite churn (TAM-196)
 
 ### Changed
