@@ -26,7 +26,19 @@ public static class ParameterBinder
     /// Environment-variable lookup. Pass <see cref="Environment.GetEnvironmentVariable(string)"/>
     /// in production; pass a fake in tests.
     /// </param>
-    public static void Bind(TampBuild build, string[] args, Func<string, string?> getEnv)
+    /// <param name="tolerateInjectionFailures">
+    /// When <c>true</c>, per-member exceptions raised by <see cref="ValueInjectionAttribute"/>
+    /// resolution are swallowed silently and the member retains its declared default.
+    /// Used during <c>--list</c> / <c>--list-tree</c> invocations where target
+    /// introspection should not fail because a tool isn't yet on PATH
+    /// (HoldFast friction #20 — TAM-209). Default <c>false</c> preserves
+    /// the historic fail-fast behavior for normal builds.
+    /// </param>
+    public static void Bind(
+        TampBuild build,
+        string[] args,
+        Func<string, string?> getEnv,
+        bool tolerateInjectionFailures = false)
     {
         if (build is null) throw new ArgumentNullException(nameof(build));
         if (args is null) throw new ArgumentNullException(nameof(args));
@@ -41,7 +53,7 @@ public static class ParameterBinder
         // codegen-style auto-loaders). These run before [Parameter] binding
         // so [Parameter] resolution can read injected values if it ever
         // needs to (none today, but the ordering is intentional).
-        BindInjectedValues(build, type, flags);
+        BindInjectedValues(build, type, flags, tolerateInjectionFailures);
 
         foreach (var member in EnumerateAnnotatedMembers(type, flags))
         {
@@ -78,7 +90,7 @@ public static class ParameterBinder
         }
     }
 
-    private static void BindInjectedValues(TampBuild build, Type type, BindingFlags flags)
+    private static void BindInjectedValues(TampBuild build, Type type, BindingFlags flags, bool tolerateFailures)
     {
         foreach (var p in type.GetProperties(flags))
         {
@@ -93,6 +105,7 @@ public static class ParameterBinder
             }
             catch (Exception ex)
             {
+                if (tolerateFailures) continue;
                 throw new InvalidOperationException(
                     $"Failed to inject value into '{p.Name}' via [{attr.GetType().Name}]: {ex.Message}",
                     ex);
@@ -112,6 +125,7 @@ public static class ParameterBinder
             }
             catch (Exception ex)
             {
+                if (tolerateFailures) continue;
                 throw new InvalidOperationException(
                     $"Failed to inject value into '{f.Name}' via [{attr.GetType().Name}]: {ex.Message}",
                     ex);

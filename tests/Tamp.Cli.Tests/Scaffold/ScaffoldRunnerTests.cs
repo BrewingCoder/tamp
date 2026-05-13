@@ -90,4 +90,72 @@ public sealed class ScaffoldRunnerTests : IDisposable
 
         Assert.True(File.Exists(P("nested/deep/file.txt").Value));
     }
+
+    // ─── TAM-125: --force overwrite semantics ─────────────────────────────
+
+    [Fact]
+    public void Force_Mode_Overwrites_Existing_File_With_Create_Spec()
+    {
+        var path = P("Build.cs");
+        File.WriteAllText(path.Value, "old content");
+
+        var runner = new ScaffoldRunner(force: true);
+        var results = runner.Run([new FileSpec(path, "new content", WriteMode.Create)]);
+
+        Assert.Equal("new content", File.ReadAllText(path.Value));
+        Assert.Single(results);
+        Assert.Equal(FileWriteOutcome.Overwritten, results[0].Outcome);
+    }
+
+    [Fact]
+    public void Force_Mode_Reports_Written_When_File_Did_Not_Exist()
+    {
+        // --force should not surface Overwritten when there was nothing to overwrite.
+        var runner = new ScaffoldRunner(force: true);
+        var results = runner.Run([new FileSpec(P("fresh.txt"), "content", WriteMode.Create)]);
+
+        Assert.Equal(FileWriteOutcome.Written, results[0].Outcome);
+    }
+
+    [Fact]
+    public void Force_Mode_With_SkipIfExists_Still_Skips()
+    {
+        // --force only changes Create-mode behavior. SkipIfExists is explicit
+        // "leave it alone" semantics; --force does not override that.
+        var path = P("dotnet-tools.json");
+        File.WriteAllText(path.Value, "{ existing }");
+
+        var runner = new ScaffoldRunner(force: true);
+        var results = runner.Run([new FileSpec(path, "{ replacement }", WriteMode.SkipIfExists)]);
+
+        Assert.Equal("{ existing }", File.ReadAllText(path.Value));
+        Assert.Equal(FileWriteOutcome.Skipped, results[0].Outcome);
+    }
+
+    [Fact]
+    public void Force_With_DryRun_Reports_Planned_Without_Writing()
+    {
+        var path = P("Build.cs");
+        File.WriteAllText(path.Value, "old content");
+
+        var runner = new ScaffoldRunner(dryRun: true, force: true);
+        var results = runner.Run([new FileSpec(path, "new content", WriteMode.Create)]);
+
+        // Nothing actually touched the file.
+        Assert.Equal("old content", File.ReadAllText(path.Value));
+        Assert.Equal(FileWriteOutcome.Planned, results[0].Outcome);
+    }
+
+    [Fact]
+    public void Without_Force_Existing_File_With_Create_Spec_Throws()
+    {
+        var path = P("Build.cs");
+        File.WriteAllText(path.Value, "old content");
+
+        var runner = new ScaffoldRunner(force: false);
+        var ex = Assert.Throws<IOException>(() =>
+            runner.Run([new FileSpec(path, "new content", WriteMode.Create)]));
+        Assert.Contains("--force", ex.Message);
+        Assert.Equal("old content", File.ReadAllText(path.Value));   // untouched
+    }
 }

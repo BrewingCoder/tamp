@@ -37,16 +37,46 @@ public sealed class Executor
         ExecutionMode mode = ExecutionMode.Run,
         TextWriter? output = null,
         LogLevel verbosity = LogLevel.Info,
-        BuildProjectInfo? projectInfo = null)
+        BuildProjectInfo? projectInfo = null,
+        IReadOnlySet<string>? skippedByUser = null,
+        bool skipDependencies = false,
+        IBuildReporter? reporter = null)
     {
         Graph = graph ?? throw new ArgumentNullException(nameof(graph));
         Mode = mode;
         Output = output ?? Console.Out;
         ProjectInfo = projectInfo;
+        SkippedByUser = skippedByUser ?? new HashSet<string>(StringComparer.Ordinal);
+        SkipDependencies = skipDependencies;
+        Reporter = reporter ?? NoopBuildReporter.Instance;
         _redactionTable = new RedactionTable();
         _redactedOutput = new RedactingTextWriter(Output, _redactionTable);
         _log = new Logger(_redactedOutput, verbosity);
     }
+
+    /// <summary>
+    /// Build-lifecycle event sink. Defaults to <see cref="NoopBuildReporter"/>;
+    /// set via constructor to receive structured events (e.g. NDJSON via
+    /// <see cref="JsonBuildReporter"/> from <c>--reporter=json</c>). TAM-140.
+    /// </summary>
+    public IBuildReporter Reporter { get; }
+
+    /// <summary>
+    /// User-supplied set of target names to treat as already-satisfied
+    /// (via the <c>--skip &lt;target&gt;</c> CLI flag, TAM-207). Dependents
+    /// of a user-skipped target still run; the skipped target's own
+    /// <c>Executes</c> block is a no-op and recorded as
+    /// <see cref="TargetStatus.Skipped"/> with a "skipped by --skip" reason.
+    /// </summary>
+    public IReadOnlySet<string> SkippedByUser { get; }
+
+    /// <summary>
+    /// When <c>true</c> (via the <c>--skip-deps</c> CLI flag), every target
+    /// in the execution order that is NOT one of the explicitly-named roots
+    /// is treated as skipped. Useful for "I know what I'm doing, just retry
+    /// this one target" debugging loops.
+    /// </summary>
+    public bool SkipDependencies { get; }
 
     public TargetGraph Graph { get; }
     public ExecutionMode Mode { get; }
@@ -68,14 +98,36 @@ public sealed class Executor
     public ExecutionResult Run(params string[] rootTargetNames)
     {
         var order = Graph.ComputeExecutionOrder(rootTargetNames);
+        var rootSet = new HashSet<string>(rootTargetNames, StringComparer.Ordinal);
 
         return Mode switch
         {
             ExecutionMode.Plan => RunPlan(order, rootTargetNames),
-            ExecutionMode.DryRun => RunDryRun(order),
-            ExecutionMode.Run => RunActual(order),
+            ExecutionMode.DryRun => RunDryRun(order, rootSet),
+            ExecutionMode.Run => RunActual(order, rootSet),
             _ => throw new InvalidOperationException($"Unknown execution mode: {Mode}"),
         };
+    }
+
+    /// <summary>
+    /// Returns true if <paramref name="spec"/> should be skipped per user CLI
+    /// configuration (<c>--skip</c> / <c>--skip-deps</c>). Out-parameter
+    /// returns a human-readable reason for the build summary table.
+    /// </summary>
+    private bool IsSkippedByUser(TargetSpec spec, IReadOnlySet<string> rootSet, out string reason)
+    {
+        if (SkippedByUser.Contains(spec.Name))
+        {
+            reason = "skipped by --skip";
+            return true;
+        }
+        if (SkipDependencies && !rootSet.Contains(spec.Name))
+        {
+            reason = "skipped by --skip-deps";
+            return true;
+        }
+        reason = string.Empty;
+        return false;
     }
 
     private ExecutionResult RunPlan(IReadOnlyList<TargetSpec> order, IReadOnlyList<string> roots)
@@ -118,13 +170,19 @@ public sealed class Executor
         return new ExecutionResult { Mode = Mode, ExitCode = 0, TargetsTraversed = order.Count };
     }
 
-    private ExecutionResult RunDryRun(IReadOnlyList<TargetSpec> order)
+    private ExecutionResult RunDryRun(IReadOnlyList<TargetSpec> order, IReadOnlySet<string> rootSet)
     {
         _log.WriteRaw("[DRY RUN] No commands will execute.");
         _log.WriteRaw();
         var planCount = 0;
         foreach (var spec in order)
         {
+            if (IsSkippedByUser(spec, rootSet, out var userSkipReason))
+            {
+                _log.WriteRaw($"[skipped] {spec.Name} — {userSkipReason}");
+                _log.WriteRaw();
+                continue;
+            }
             if (CheckSkippedByCondition(spec) is { } skipReason)
             {
                 _log.WriteRaw($"[skipped] {spec.Name} — only-when condition false: {skipReason}");
@@ -145,7 +203,7 @@ public sealed class Executor
         return new ExecutionResult { Mode = Mode, ExitCode = 0, TargetsTraversed = order.Count, CommandPlansPrinted = planCount };
     }
 
-    private ExecutionResult RunActual(IReadOnlyList<TargetSpec> order)
+    private ExecutionResult RunActual(IReadOnlyList<TargetSpec> order, IReadOnlySet<string> rootSet)
     {
         var records = new List<TargetExecutionRecord>(order.Count);
         var skipped = new List<string>();
@@ -153,6 +211,10 @@ public sealed class Executor
         (string Name, int ExitCode)? buildFailedAt = null;
         var buildSw = Stopwatch.StartNew();
         var buildSwStartTicks = Stopwatch.GetTimestamp();
+
+        // ── TAM-140: emit build.start event (no-op for NoopReporter)
+        var buildId = Guid.NewGuid().ToString("N");
+        Reporter.OnBuildStart(buildId, rootSet.ToList(), order.Select(s => s.Name).ToList());
 
         // ── Diagnostics: root build span (ADR 0018).
         using var buildSpan = TampDiagnostics.BuildSource.StartActivity("build", ActivityKind.Internal);
@@ -185,13 +247,27 @@ public sealed class Executor
             if (buildFailedAt.HasValue && !spec.AssuredAfterFailure)
             {
                 _log.WriteRaw($"==> {spec.Name} (not run: build already failed)");
+                Reporter.OnTargetNotRun(spec.Name, "build already failed");
                 records.Add(TargetExecutionRecord.NotRun(spec.Name));
+                continue;
+            }
+
+            // User-driven skip (--skip / --skip-deps) — TAM-207. Treat the
+            // target as already-satisfied so dependents continue to run.
+            if (IsSkippedByUser(spec, rootSet, out var userSkipReason))
+            {
+                _log.WriteRaw($"==> {spec.Name} ({userSkipReason})");
+                Reporter.OnTargetSkipped(spec.Name, userSkipReason);
+                skipped.Add(spec.Name);
+                records.Add(TargetExecutionRecord.Skipped(spec.Name, userSkipReason));
+                EmitSkippedTargetActivity(spec, userSkipReason);
                 continue;
             }
 
             if (CheckSkippedByCondition(spec) is { } skipReason)
             {
                 _log.WriteRaw($"==> {spec.Name} (skipped: {skipReason})");
+                Reporter.OnTargetSkipped(spec.Name, skipReason);
                 skipped.Add(spec.Name);
                 records.Add(TargetExecutionRecord.Skipped(spec.Name, skipReason));
                 EmitSkippedTargetActivity(spec, skipReason);
@@ -202,6 +278,7 @@ public sealed class Executor
             if (CheckRequirementsFailed(spec) is { } reqFail)
             {
                 _log.WriteRaw($"==> {spec.Name} REQUIRES failed: {reqFail}");
+                Reporter.OnTargetFailed(spec.Name, TimeSpan.Zero, $"Requires failed: {reqFail}");
                 records.Add(TargetExecutionRecord.Failed(spec.Name, TimeSpan.Zero, $"Requires failed: {reqFail}"));
                 if (!buildFailedAt.HasValue)
                 {
@@ -212,6 +289,7 @@ public sealed class Executor
             }
 
             _log.WriteRaw($"==> {spec.Name}");
+            Reporter.OnTargetStart(spec.Name);
             var sw = Stopwatch.StartNew();
             var swStartTicks = Stopwatch.GetTimestamp();
             var allocAtStart = GC.GetTotalAllocatedBytes(precise: false);
@@ -273,6 +351,7 @@ public sealed class Executor
                             _log.WriteRaw($"==> {spec.Name} FAILED (exit {exit})");
                             if (spec.FailureMode == FailureMode.Continue) continue;
                             sw.Stop();
+                            Reporter.OnTargetFailed(spec.Name, sw.Elapsed, $"exit {exit}");
                             records.Add(TargetExecutionRecord.Failed(spec.Name, sw.Elapsed, $"exit {exit}"));
                                         EmitTargetTerminal(targetSpan, spec, sw.Elapsed, swStartTicks, allocAtStart, workingSetAtStart, gen0AtStart, gen1AtStart, gen2AtStart, cpuAtStart, commandsForThisTarget, TampDiagnostics.Tags.OutcomeFailure, $"exit {exit}");
                             if (!buildFailedAt.HasValue)
@@ -286,6 +365,7 @@ public sealed class Executor
                 }
 
                 sw.Stop();
+                Reporter.OnTargetSucceeded(spec.Name, sw.Elapsed);
                 records.Add(TargetExecutionRecord.Done(spec.Name, sw.Elapsed));
                 EmitTargetTerminal(targetSpan, spec, sw.Elapsed, swStartTicks, allocAtStart, workingSetAtStart, gen0AtStart, gen1AtStart, gen2AtStart, cpuAtStart, commandsForThisTarget, TampDiagnostics.Tags.OutcomeSuccess);
             }
@@ -293,6 +373,7 @@ public sealed class Executor
             {
                 sw.Stop();
                 _log.WriteRaw($"==> {spec.Name} threw {ex.GetType().Name}; continuing per FailureMode.Continue: {ex.Message}");
+                Reporter.OnTargetSucceeded(spec.Name, sw.Elapsed);
                 records.Add(TargetExecutionRecord.Done(spec.Name, sw.Elapsed));
                 EmitTargetTerminal(targetSpan, spec, sw.Elapsed, swStartTicks, allocAtStart, workingSetAtStart, gen0AtStart, gen1AtStart, gen2AtStart, cpuAtStart, commandsForThisTarget, TampDiagnostics.Tags.OutcomeSuccess);
             }
@@ -300,6 +381,7 @@ public sealed class Executor
             {
                 sw.Stop();
                 _log.WriteRaw($"==> {spec.Name} threw {ex.GetType().Name}: {ex.Message}");
+                Reporter.OnTargetFailed(spec.Name, sw.Elapsed, $"{ex.GetType().Name}: {ex.Message}");
                 records.Add(TargetExecutionRecord.Failed(spec.Name, sw.Elapsed, ex.Message));
                 EmitTargetTerminal(targetSpan, spec, sw.Elapsed, swStartTicks, allocAtStart, workingSetAtStart, gen0AtStart, gen1AtStart, gen2AtStart, cpuAtStart, commandsForThisTarget, TampDiagnostics.Tags.OutcomeFailure, $"{ex.GetType().Name}: {ex.Message}");
                 if (!buildFailedAt.HasValue)
@@ -376,6 +458,13 @@ public sealed class Executor
         TampDiagnostics.BuildsTotal.Add(1, new KeyValuePair<string, object?>(TampDiagnostics.Tags.OutcomeKey, buildOutcome));
         TampDiagnostics.BuildDurationMs.Record(buildSw.Elapsed.TotalMilliseconds, new KeyValuePair<string, object?>(TampDiagnostics.Tags.OutcomeKey, buildOutcome));
         TampDiagnostics.BuildPeakMemoryBytes.Record(peakWorkingSetBytes, new KeyValuePair<string, object?>(TampDiagnostics.Tags.OutcomeKey, buildOutcome));
+
+        // ── TAM-140: emit build.end event for IBuildReporter (no-op for NoopReporter)
+        Reporter.OnBuildEnd(
+            status: buildExitCode == 0 ? "succeeded" : "failed",
+            firstFailedTarget: buildFailedAt?.Name,
+            exitCode: buildExitCode,
+            totalDuration: buildSw.Elapsed);
 
         return new ExecutionResult
         {

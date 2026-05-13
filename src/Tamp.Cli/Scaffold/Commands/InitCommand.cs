@@ -80,25 +80,26 @@ public static class InitCommand
         else foreach (var p in probes) p.Probe(repoRoot, ctxBuilder);
         var ctx = ctxBuilder.Build();
 
-        // Pre-flight refusal: if Build.cs already exists, no flags can override in v0.1.0.
-        if (ctx.BuildCsAlreadyPresent)
+        // Pre-flight refusal: if Build.cs already exists AND --force is not set, refuse.
+        if (ctx.BuildCsAlreadyPresent && !opts.Force)
         {
-            stderr.WriteLine($"tamp init: build/Build.cs already exists at '{ctx.RepoRoot.Value}'. Refusing to overwrite. " +
-                             "(--force lands in 0.2.0.)");
+            stderr.WriteLine($"tamp init: build/Build.cs already exists at '{ctx.RepoRoot.Value}'. " +
+                             "Pass --force to overwrite.");
             return ExitFileExists;
         }
 
-        // Resolve template.
-        const string defaultTemplateName = "minimal";
+        // Resolve template — adopter-selected name or default to "minimal".
+        var templateName = opts.TemplateName ?? "minimal";
         IScaffoldTemplate? template = null;
         foreach (var src in sources)
         {
-            template = await src.ResolveAsync(defaultTemplateName, ct);
+            template = await src.ResolveAsync(templateName, ct);
             if (template is not null) break;
         }
         if (template is null)
         {
-            stderr.WriteLine($"tamp init: no template named '{defaultTemplateName}' registered. (This is a bug in this CLI build.)");
+            stderr.WriteLine($"tamp init: no template named '{templateName}' registered. " +
+                             "Run `tamp init --list-templates` to see available templates.");
             return ExitTemplateNotFound;
         }
 
@@ -118,7 +119,7 @@ public static class InitCommand
 
         // Render + run.
         var specs = template.Render(ctx).ToList();
-        var runner = new ScaffoldRunner(dryRun: opts.DryRun);
+        var runner = new ScaffoldRunner(dryRun: opts.DryRun, force: opts.Force);
         IReadOnlyList<FileWriteResult> results;
         try
         {
@@ -135,10 +136,11 @@ public static class InitCommand
         {
             var verb = r.Outcome switch
             {
-                FileWriteOutcome.Written => "  wrote   ",
-                FileWriteOutcome.Skipped => "  skipped ",
-                FileWriteOutcome.Planned => "  would-write ",
-                _ => "  ?       ",
+                FileWriteOutcome.Written     => "  wrote       ",
+                FileWriteOutcome.Overwritten => "  overwrote   ",
+                FileWriteOutcome.Skipped     => "  skipped     ",
+                FileWriteOutcome.Planned     => "  would-write ",
+                _ => "  ?           ",
             };
             stdout.WriteLine(verb + Relative(repoRoot, r.Path));
         }
@@ -192,15 +194,17 @@ public static class InitCommand
                     opts.SolutionOverride = AbsolutePath.Create(Path.GetFullPath(args[i]));
                     break;
                 case "--template":
-                    opts.UnsupportedFlag = (a, "0.2.0"); if (++i < args.Length) { /* consume value */ }
+                    if (++i >= args.Length) { error = "--template requires a name (minimal, library, monorepo)."; return opts; }
+                    opts.TemplateName = args[i];
                     break;
                 case "--template-source":
-                    opts.UnsupportedFlag = (a, "0.2.0"); if (++i < args.Length) { /* consume value */ }
+                    opts.UnsupportedFlag = (a, "0.3.0"); if (++i < args.Length) { /* consume value */ }
                     break;
                 case "--offline":
-                    opts.UnsupportedFlag = (a, "0.2.0"); break;
+                    opts.UnsupportedFlag = (a, "0.3.0"); break;
                 case "--force":
-                    opts.UnsupportedFlag = (a, "0.2.0"); break;
+                    opts.Force = true;
+                    break;
                 case "--with-ci":
                     opts.UnsupportedFlag = (a, "0.3.0"); if (++i < args.Length) { /* consume value */ }
                     break;
@@ -260,24 +264,30 @@ public static class InitCommand
         w.WriteLine("tamp init — scaffold a Tamp build script into the current directory");
         w.WriteLine();
         w.WriteLine("USAGE:");
-        w.WriteLine("  tamp init [--solution <path>] [--dry-run] [--list-templates]");
+        w.WriteLine("  tamp init [--template <name>] [--solution <path>] [--dry-run] [--force] [--list-templates]");
         w.WriteLine();
-        w.WriteLine("WHAT IT WRITES (minimal template):");
-        w.WriteLine("  build/Build.cs               minimal build script");
+        w.WriteLine("TEMPLATES (embedded — offline-safe):");
+        w.WriteLine("  minimal     Clean / Restore / Compile / Test (default)");
+        w.WriteLine("  library     minimal + typed Pack target with nupkg output dir");
+        w.WriteLine("  monorepo    per-project Test fan-out + Ci aggregate + Pack");
+        w.WriteLine();
+        w.WriteLine("WHAT IT WRITES (any template):");
+        w.WriteLine("  build/Build.cs               build script (shape varies by template)");
         w.WriteLine("  build/Build.csproj           pins Tamp.Core + Tamp.NetCli.V10");
         w.WriteLine("  .config/dotnet-tools.json    registers dotnet-tamp as a local tool (if absent)");
+        w.WriteLine("  tamp.sh + tamp.cmd           shims that `dotnet tool restore` on first run");
         w.WriteLine();
         w.WriteLine("FLAGS:");
+        w.WriteLine("  --template <name>     Pick a non-minimal template (minimal | library | monorepo)");
         w.WriteLine("  --solution <path>     Explicit .NET solution path (otherwise auto-detected)");
         w.WriteLine("  --dry-run             Print would-write list; touch nothing");
+        w.WriteLine("  --force               Overwrite existing files");
         w.WriteLine("  --list-templates      List templates from all registered sources");
         w.WriteLine("  -h | --help           This message");
         w.WriteLine();
         w.WriteLine("RESERVED (parsed; not implemented):");
-        w.WriteLine("  --template <name>          (0.2.0)  Pick a non-minimal template");
-        w.WriteLine("  --template-source <pkg>    (0.2.0)  Pin a specific NuGet template package");
-        w.WriteLine("  --offline                  (0.2.0)  Refuse network fallback");
-        w.WriteLine("  --force                    (0.2.0)  Overwrite existing files");
+        w.WriteLine("  --template-source <pkg>    (0.3.0)  Pin a specific NuGet template package");
+        w.WriteLine("  --offline                  (0.3.0)  Refuse network fallback");
         w.WriteLine("  --with-ci <vendor>         (0.3.0)  Emit CI workflow files");
         w.WriteLine("  --interactive              (0.4.0)  Prompt for choices");
     }
@@ -287,8 +297,10 @@ public static class InitCommand
     {
         public bool Help;
         public bool DryRun;
+        public bool Force;
         public bool ListTemplates;
         public string? WorkingDirectory;
+        public string? TemplateName;
         public AbsolutePath? SolutionOverride;
         public (string Flag, string Version)? UnsupportedFlag;
     }

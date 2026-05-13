@@ -15,6 +15,8 @@ public enum FileWriteOutcome
     Skipped,
     /// <summary>Would-write under <c>--dry-run</c>; nothing touched on disk.</summary>
     Planned,
+    /// <summary>File existed but <c>--force</c> was set; the runner replaced it. TAM-125.</summary>
+    Overwritten,
 }
 
 /// <summary>One row in the runner's report.</summary>
@@ -27,7 +29,12 @@ public sealed record FileWriteResult(AbsolutePath Path, FileWriteOutcome Outcome
 public sealed class ScaffoldRunner
 {
     private readonly bool _dryRun;
-    public ScaffoldRunner(bool dryRun = false) => _dryRun = dryRun;
+    private readonly bool _force;
+    public ScaffoldRunner(bool dryRun = false, bool force = false)
+    {
+        _dryRun = dryRun;
+        _force = force;
+    }
 
     public IReadOnlyList<FileWriteResult> Run(IEnumerable<FileSpec> specs)
     {
@@ -40,9 +47,9 @@ public sealed class ScaffoldRunner
 
             var exists = File.Exists(spec.Path.Value);
 
-            if (exists && spec.Mode == WriteMode.Create)
+            if (exists && spec.Mode == WriteMode.Create && !_force)
                 throw new System.IO.IOException(
-                    $"Refusing to overwrite existing file '{spec.Path.Value}'. Use --force (v0.2.0+) to override.");
+                    $"Refusing to overwrite existing file '{spec.Path.Value}'. Pass --force to override.");
 
             if (exists && spec.Mode == WriteMode.SkipIfExists)
             {
@@ -70,7 +77,10 @@ public sealed class ScaffoldRunner
                   | System.IO.UnixFileMode.OtherRead | System.IO.UnixFileMode.OtherExecute);
             }
 
-            results.Add(new FileWriteResult(spec.Path, FileWriteOutcome.Written));
+            // When --force overwrote an existing file, report it distinctly so
+            // adopters can see what was replaced vs. what was new.
+            results.Add(new FileWriteResult(spec.Path,
+                exists && _force ? FileWriteOutcome.Overwritten : FileWriteOutcome.Written));
         }
         return results;
     }

@@ -370,6 +370,119 @@ tamp --list-tree                     # list targets with dependencies
 
 ---
 
+## Cross-Cutting Patterns Every Adopter Should Know
+
+These patterns recur across every satellite. Internalising them once saves reflection archaeology in every adoption.
+
+### 1. `[FromPath]` field naming — use `<Tool>Bin`, not the tool's class name
+
+Wrong:
+```csharp
+using Tamp.Cargo;
+[FromPath("cargo")] readonly Tool Cargo = null!;     // shadows Tamp.Cargo.Cargo static class
+Cargo.Build(Cargo, s => s...)                          // compile error: Tool has no Build
+```
+
+Right:
+```csharp
+[FromPath("cargo")] readonly Tool CargoBin = null!;
+Cargo.Build(CargoBin, s => s...)
+```
+
+TAMP005 catches this at compile time (`Tamp.Core 1.9.0+`). The convention `<Tool>Bin` / `<Tool>Tool` / `<Tool>Cli` / `<Tool>Exe` opts out of the warning.
+
+### 2. `[FromPath].Optional` — for tools used by only some targets
+
+```csharp
+[FromPath("trufflehog", Optional = true)] readonly Tool TruffleHogBin = null!;
+```
+
+Without `Optional = true`, `[FromPath]` fails the build at startup if the tool isn't installed — including when running `dotnet tamp --list`. As of `Tamp.Core 1.9.0`, `--list` / `--list-tree` modes silently tolerate injection failures so target enumeration works on a runner that doesn't have every tool yet. Outside `--list`, use `Optional = true` for tools that some targets need but others don't.
+
+### 3. Target name vs static-class name — don't shadow
+
+Wrong:
+```csharp
+using Tamp.GraphQLCodegen.V5;
+Target GraphQLCodegen => _ => _                     // shadows the static class
+    .Executes(() => GraphQLCodegen.Generate(...));  // resolves to Target, not the facade
+```
+
+Right:
+```csharp
+Target FrontendCodegen => _ => _
+    .Executes(() => GraphQLCodegen.Generate(...));
+```
+
+TAMP006 catches this at compile time. Verb-form names (`Run<Tool>`, `Do<Tool>`, `Pack<Tool>`) work; pure satellite-class names shadow.
+
+### 4. Multi-statement `Executes` — `Func<CommandPlan>`, not `Action`
+
+Wrong (silent no-op — TAMP001 catches this):
+```csharp
+Target Compile => _ => _.Executes(() =>
+{
+    File.WriteAllText(settings, xml);
+    DotNet.Test(s => s.SetSettings(settings));   // ← CommandPlan dropped on the floor
+});
+```
+
+Right:
+```csharp
+Target Compile => _ => _.Executes(() =>
+{
+    File.WriteAllText(settings, xml);
+    return DotNet.Test(s => s.SetSettings(settings));   // ← explicit return → executed
+});
+```
+
+`Executes(Action)` discards any value the lambda might return; the target reports success without running the plan. `Executes(Func<CommandPlan>)` (and `Executes(Func<IEnumerable<CommandPlan>>)` for fan-out) take the plan and dispatch it.
+
+### 5. Stamp before build — `.Before(...)` is load-bearing
+
+When a version-stamping target writes a file that downstream targets *compile against* (`Cargo.toml`'s `[package].version`, `package.json`'s `version`, `AppxManifest.xml`'s `Identity/@Version`), the stamp must run **before** the compile, not after — otherwise binaries embed the OLD version while manifests advertise the NEW one.
+
+```csharp
+Target StampVersion => _ => _
+    .Before(nameof(BuildService), nameof(BuildDesktop))    // ← load-bearing
+    .Executes(() =>
+    {
+        Cargo.SetPackageVersion(ServiceCrate / "Cargo.toml", Version);
+        Msix.SetAppxManifestVersion(AppxManifest, Version);
+        Npm.SetVersion(NpmBin, Version);
+    });
+```
+
+Without the `.Before(...)`, Tamp's scheduler is free to order it after the build branch. Debug by running `dotnet tamp <target> --plan` — prints the resolved order without executing anything.
+
+### 6. Configure → ToXml → SetSettings — the indirect-integration pattern
+
+Some satellites configure a tool by writing an XML file the tool reads at run time (Coverlet → runsettings, GitVersion → config). The pattern:
+
+1. Build settings via the satellite's `Configure(...)` / `Settings` shape.
+2. Call `.ToXxxXml()` to render the file body.
+3. Write to a known path (use `TampBuild.Scratch(...)` for auto-cleanup).
+4. Pass the path to the downstream tool's `SetSettings(...)`.
+
+Most satellites with this shape now ship a cross-package extension method that collapses the four-step dance to one fluent call — e.g. `DotNetTestSettings.WithCoverlet(...)` in `Tamp.Coverlet.V6 0.2.0+`. Look for `With<X>` / `As<X>` extension methods first; the four-step is the lower-level escape hatch.
+
+### 7. Cross-platform helpers live on `AbsolutePath`
+
+`Path` from `System.IO` is fine but Tamp owns the build-script idiom for cross-platform path manipulation:
+
+```csharp
+AbsolutePath Artifacts => RootDirectory / "artifacts";
+Artifacts.CreateDirectory();              // mkdir -p, idempotent
+(staging / "manifest.json").WriteAllText(json);
+src.CopyToDirectory(staging);             // preserves filename, creates dest
+
+var scratch = Scratch("msix-staging");    // TampBuild-scoped temp dir, auto-cleaned at build exit
+```
+
+`Tamp.Core 1.8.0+` ships the full FS surface natively. See [Paths & Filesystem](https://github.com/tamp-build/tamp/wiki/Paths-And-Filesystem) for the method reference.
+
+---
+
 ## The Agent Surface
 
 A target can declare any subset of these. Defaults are sensible for the common case; specifying more enables smarter scheduling and clearer telemetry.

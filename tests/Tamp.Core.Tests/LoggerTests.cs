@@ -127,7 +127,7 @@ public sealed class LoggerTests
         {
             ["X"] = new TargetSpec { Name = "X" },
         };
-        var (_, _, _, _, v) = TampBuild.ParseInvocation(["X", "--verbosity", "verbose"], targets);
+        var (_, _, _, _, v, _, _, _, _) = TampBuild.ParseInvocation(["X", "--verbosity", "verbose"], targets);
         Assert.Equal(LogLevel.Debug, v);
     }
 
@@ -138,7 +138,7 @@ public sealed class LoggerTests
         {
             ["X"] = new TargetSpec { Name = "X" },
         };
-        var (_, _, _, _, v) = TampBuild.ParseInvocation(["X", "--verbosity=quiet"], targets);
+        var (_, _, _, _, v, _, _, _, _) = TampBuild.ParseInvocation(["X", "--verbosity=quiet"], targets);
         Assert.Equal(LogLevel.Error, v);
     }
 
@@ -149,7 +149,7 @@ public sealed class LoggerTests
         {
             ["X"] = new TargetSpec { Name = "X" },
         };
-        var (_, _, _, _, v) = TampBuild.ParseInvocation(["X", "--quiet"], targets);
+        var (_, _, _, _, v, _, _, _, _) = TampBuild.ParseInvocation(["X", "--quiet"], targets);
         Assert.Equal(LogLevel.Error, v);
     }
 
@@ -160,7 +160,7 @@ public sealed class LoggerTests
         {
             ["X"] = new TargetSpec { Name = "X" },
         };
-        var (_, _, _, _, v) = TampBuild.ParseInvocation(["X", "--verbose"], targets);
+        var (_, _, _, _, v, _, _, _, _) = TampBuild.ParseInvocation(["X", "--verbose"], targets);
         Assert.Equal(LogLevel.Debug, v);
     }
 
@@ -171,7 +171,7 @@ public sealed class LoggerTests
         {
             ["X"] = new TargetSpec { Name = "X" },
         };
-        var (_, _, _, _, v) = TampBuild.ParseInvocation(["X", "--diagnostic"], targets);
+        var (_, _, _, _, v, _, _, _, _) = TampBuild.ParseInvocation(["X", "--diagnostic"], targets);
         Assert.Equal(LogLevel.Trace, v);
     }
 
@@ -182,7 +182,7 @@ public sealed class LoggerTests
         {
             ["X"] = new TargetSpec { Name = "X" },
         };
-        var (_, _, _, _, v) = TampBuild.ParseInvocation(["X"], targets);
+        var (_, _, _, _, v, _, _, _, _) = TampBuild.ParseInvocation(["X"], targets);
         Assert.Equal(LogLevel.Info, v);
     }
 

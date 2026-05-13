@@ -145,6 +145,27 @@ public abstract partial class TampBuild
         }
     }
 
+    /// <summary>
+    /// Cheap pre-scan over <paramref name="args"/> looking for the
+    /// <c>--list</c> / <c>--list-tree</c> flags. Used before
+    /// <see cref="ParseInvocation"/> runs so <see cref="ParameterBinder.Bind"/>
+    /// can decide whether to tolerate <c>[FromPath]</c> resolution failures.
+    /// HoldFast friction #20 — target introspection should not require
+    /// every tool to already be on PATH.
+    /// </summary>
+    internal static bool IsListOnlyInvocation(string[] args)
+    {
+        foreach (var arg in args)
+        {
+            if (arg == "--list" || arg == "--list-tree") return true;
+            // Handle inline-equals form (--list=json) — anything that begins
+            // with one of the list flags followed by '=' is still list mode.
+            if (arg.StartsWith("--list=", StringComparison.Ordinal)) return true;
+            if (arg.StartsWith("--list-tree=", StringComparison.Ordinal)) return true;
+        }
+        return false;
+    }
+
     /// <summary>Reset the cached <see cref="RootDirectory"/>. Test-only.</summary>
     internal static void ResetCachedDirectories()
     {
@@ -309,10 +330,17 @@ public abstract partial class TampBuild
         {
             build = new T();
 
+            // List-only invocations skip value-injection failures so adopters
+            // can `tamp --list` without every [FromPath] tool being installed
+            // on the runner — HoldFast friction #20. Cheap pre-scan; the
+            // authoritative flag parse happens later in ParseInvocation.
+            var listOnly = IsListOnlyInvocation(args);
+
             // Parameter binding happens before target discovery so that any
             // [Parameter] reads inside a target's authoring lambda see the
             // resolved values.
-            ParameterBinder.Bind(build, args, Environment.GetEnvironmentVariable);
+            ParameterBinder.Bind(build, args, Environment.GetEnvironmentVariable,
+                tolerateInjectionFailures: listOnly);
 
             // Secret binding: env-var leg (TAM-78). The onResolved callback
             // emits CI-vendor masking instructions (e.g. ::add-mask:: on
@@ -366,16 +394,41 @@ public abstract partial class TampBuild
 
             var graph = new TargetGraph(targets);
 
-            var (mode, targetNames, listMode, showAll, verbosity) = ParseInvocation(args, targets);
+            var (mode, targetNames, listMode, showAll, verbosity, skipTargets, skipDeps, format, reporterKind) = ParseInvocation(args, targets);
 
-            if (listMode is ListMode.Flat)
+            // Validate --skip <name> values map to actual targets — typos
+            // would otherwise silently no-op (the skip set would just never
+            // match anything in the execution order).
+            foreach (var skipped in skipTargets)
             {
-                PrintTargetList(targets, tree: false, showAll);
-                return 0;
+                if (!targets.ContainsKey(skipped))
+                {
+                    Console.Error.WriteLine($"tamp: --skip target '{skipped}' is not a known target.");
+                    Console.Error.WriteLine("      Use `--list` to see available targets.");
+                    return 2;
+                }
             }
-            if (listMode is ListMode.Tree)
+
+            // --skip-deps requires an explicit target — it semantically means
+            // "run only the named target's Executes." With no target named,
+            // there's nothing to skip-around.
+            if (skipDeps && targetNames.Count == 0)
             {
-                PrintTargetList(targets, tree: true, showAll);
+                Console.Error.WriteLine("tamp: --skip-deps requires an explicit target name.");
+                Console.Error.WriteLine("      Use `dotnet tamp <Target> --skip-deps` to run just that target.");
+                return 2;
+            }
+
+            if (listMode is ListMode.Flat or ListMode.Tree)
+            {
+                if (format == OutputFormat.Json)
+                {
+                    PrintTargetCatalogJson(targets, build, showAll);
+                }
+                else
+                {
+                    PrintTargetList(targets, tree: listMode is ListMode.Tree, showAll);
+                }
                 return 0;
             }
 
@@ -410,7 +463,12 @@ public abstract partial class TampBuild
                 }
             }
 
-            PrintBanner(Console.Out);
+            // TAM-140: in --reporter=json mode, suppress the ASCII banner so
+            // stdout carries only NDJSON events.
+            if (reporterKind != ReporterKind.Json)
+            {
+                PrintBanner(Console.Out);
+            }
 
             // Resolve project info for diagnostics (ADR 0018):
             // [BuildProject] attribute > [Solution] filename > repo dir name > "unknown".
@@ -420,7 +478,22 @@ public abstract partial class TampBuild
                 solutionPath,
                 RootDirectory.Value);
 
-            var executor = new Executor(graph, mode, output: null, verbosity, projectInfo);
+            // TAM-140: build the reporter from the parsed flag. In JSON mode,
+            // the JsonBuildReporter takes Console.Out for NDJSON emit and the
+            // Executor's Logger is routed to TextWriter.Null so framework
+            // decorations don't pollute the structured stream.
+            IBuildReporter reporter = reporterKind switch
+            {
+                ReporterKind.Json => new JsonBuildReporter(Console.Out),
+                _ => NoopBuildReporter.Instance,
+            };
+            TextWriter? logOutput = reporterKind == ReporterKind.Json ? TextWriter.Null : null;
+
+            var executor = new Executor(
+                graph, mode, output: logOutput, verbosity, projectInfo,
+                skippedByUser: skipTargets,
+                skipDependencies: skipDeps,
+                reporter: reporter);
             return executor.Run(targetNames.ToArray()).ExitCode;
         }
         catch (InvalidOperationException ex)
@@ -446,7 +519,7 @@ public abstract partial class TampBuild
     /// given, the build defaults to a target literally named <c>Default</c>
     /// or <c>Ci</c> if present.
     /// </remarks>
-    internal static (ExecutionMode, IReadOnlyList<string>, ListMode, bool ShowAll, LogLevel Verbosity) ParseInvocation(
+    internal static (ExecutionMode, IReadOnlyList<string>, ListMode, bool ShowAll, LogLevel Verbosity, IReadOnlySet<string> SkipTargets, bool SkipDeps, OutputFormat Format, ReporterKind Reporter) ParseInvocation(
         string[] args, IReadOnlyDictionary<string, TargetSpec> targets)
     {
         var mode = ExecutionMode.Run;
@@ -454,6 +527,10 @@ public abstract partial class TampBuild
         var showAll = false;
         var verbosity = LogLevel.Info;
         var targetNames = new List<string>();
+        var skipTargets = new HashSet<string>(StringComparer.Ordinal);
+        var skipDeps = false;
+        var format = OutputFormat.Text;
+        var reporterKind = ReporterKind.Text;
         var skipNextValue = false;
 
         for (var i = 0; i < args.Length; i++)
@@ -482,6 +559,35 @@ public abstract partial class TampBuild
                     case "quiet": verbosity = LogLevel.Error; break;
                     case "verbose": verbosity = LogLevel.Debug; break;
                     case "diagnostic": verbosity = LogLevel.Trace; break;
+                    case "skip":
+                        var skipValue = inlineValue ?? (i + 1 < args.Length ? args[++i] : null);
+                        if (string.IsNullOrWhiteSpace(skipValue))
+                            throw new InvalidOperationException("--skip requires a target name (e.g. `--skip StampVersion`).");
+                        skipTargets.Add(skipValue!);
+                        break;
+                    case "skip-deps":
+                        skipDeps = true;
+                        break;
+                    case "format":
+                        var formatValue = inlineValue ?? (i + 1 < args.Length ? args[++i] : null);
+                        format = (formatValue?.Trim().ToLowerInvariant()) switch
+                        {
+                            "json" => OutputFormat.Json,
+                            "text" or null => OutputFormat.Text,
+                            _ => throw new InvalidOperationException(
+                                $"Unknown --format value '{formatValue}'. Use 'text' or 'json'."),
+                        };
+                        break;
+                    case "reporter":
+                        var reporterValue = inlineValue ?? (i + 1 < args.Length ? args[++i] : null);
+                        reporterKind = (reporterValue?.Trim().ToLowerInvariant()) switch
+                        {
+                            "json" => ReporterKind.Json,
+                            "text" or null => ReporterKind.Text,
+                            _ => throw new InvalidOperationException(
+                                $"Unknown --reporter value '{reporterValue}'. Use 'text' or 'json'."),
+                        };
+                        break;
                     default:
                         // Unknown flag is a parameter binding handled by
                         // ParameterBinder. If the next arg is a value (not
@@ -508,8 +614,11 @@ public abstract partial class TampBuild
             else if (targets.ContainsKey("Ci")) targetNames.Add("Ci");
         }
 
-        return (mode, targetNames, listMode, showAll, verbosity);
+        return (mode, targetNames, listMode, showAll, verbosity, skipTargets, skipDeps, format, reporterKind);
     }
+
+    /// <summary>Reporter selection for build event emission (TAM-140).</summary>
+    internal enum ReporterKind { Text, Json }
 
     /// <summary>Maps user-facing verbosity strings to internal log levels.</summary>
     internal static LogLevel ParseVerbosity(string value) => value.Trim().ToLowerInvariant() switch

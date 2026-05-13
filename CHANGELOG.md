@@ -8,6 +8,140 @@ Pre-1.0 versions may break public API freely between minor versions; the `0.x` l
 
 ## [Unreleased]
 
+## [1.9.0] — 2026-05-13 — `--skip` / `--skip-deps` CLI flags + reflection-bound field warning suppressor + structured `--format=json` + NDJSON `--reporter=json`
+
+### Added — `--list --format=json` (TAM-139)
+
+Structured catalog output for the existing `--list` / `--list-tree` modes.
+Required by VS Code (TAM-141..149) and Fleet (TAM-150..158) extensions; also
+useful for CI log mining and third-party tooling.
+
+```bash
+dotnet tamp --list --format=json | jq '.targets[] | select(.depends_on | length > 0)'
+```
+
+JSON shape covers everything the IDE extensions need to render target trees,
+parameter forms, and capability badges without parsing human-readable text:
+`tamp_version`, `build_assembly`, `defaults`, `targets[]` (with `description`,
+`phase`, `depends_on`, `order_after`/`order_before`, `triggers`, `triggered_by`,
+`on_failure_of`, `requires_network`/`requires_docker`/`requires_admin`,
+`tool_requirements`, `failure_mode`, `idempotent`, `timeout_ms`), and
+`parameters[]` (with `name`, `type`, `description`, `default`, `env_var`).
+14 new tests in `TargetCatalogJsonTests`.
+
+### Added — `--reporter=json` NDJSON build event stream (TAM-140)
+
+```bash
+dotnet tamp Compile --reporter=json | jq -c 'select(.event=="target.end")'
+```
+
+New `IBuildReporter` abstraction with the existing text emit + a new
+`JsonBuildReporter` that writes one NDJSON event per line. Events:
+`build.start`, `target.start`, `target.end` (status = succeeded | failed),
+`target.skipped`, `target.not_run`, `build.end`. Stdout in JSON mode contains
+only NDJSON — the ASCII banner is suppressed and the framework's `==>` text
+decorations are routed to `TextWriter.Null`.
+
+Same `tamp.build.id` GUID emitted in `build.start` will flow into the OTLP
+exporter spans once Tamp.Telemetry (TAM-129) lands — single ID across reporter
+and telemetry. 15 new tests in `BuildReporterTests`.
+
+### Added — `--skip <target>` / `--skip-deps` CLI flags (TAM-207)
+
+### Added — `--skip <target>` / `--skip-deps` CLI flags (TAM-207)
+
+DasBook canary friction batch #3 #10 (2026-05-13). NUKE has `--skip <target>`;
+Tamp didn't. Adopters who wanted to bypass a specific upstream dependency
+during debugging had to invoke a target lower in the chain — awkward.
+
+- **`--skip <target>`** — treat the named target as already-satisfied. Its
+  `Executes` block does NOT run; the target is recorded as `Skipped` with
+  reason `skipped by --skip`. Dependents still execute normally. Flag is
+  repeatable: `--skip A --skip B`. Inline-equals form supported too:
+  `--skip=StampVersion`.
+
+  ```bash
+  dotnet tamp PackMsix --skip StampVersion
+  ```
+
+  Typo protection: if the named target doesn't exist in the build, the CLI
+  errors with `tamp: --skip target 'XYZ' is not a known target.` and exits 2.
+
+- **`--skip-deps`** — boolean. Treat every target in the execution order
+  that is NOT one of the explicitly-named roots as Skipped. Useful for
+  "I know what I'm doing, just retry this one target" debugging loops.
+
+  ```bash
+  dotnet tamp PackMsix --skip-deps
+  ```
+
+  Without an explicit target, `--skip-deps` errors (`--skip-deps requires
+  an explicit target name.`) — skip-around-deps is meaningless if there's
+  nothing to skip around.
+
+### Added — TAMP005 analyzer: `[FromPath]` field-name shadowing (TAM-200)
+
+DasBook canary friction batch #3 #3 (2026-05-13). The natural idiom
+`[FromPath("cargo")] readonly Tool Cargo` shadows the static `Tamp.Cargo.Cargo`
+facade when both are in scope — `Cargo.Build(Cargo, ...)` fails compile with
+the confusing `Tool does not contain a definition for Build` error.
+
+- **`Tamp.Analyzers.FromPathFieldShadowingAnalyzer`** — Roslyn analyzer that
+  fires when a field decorated with `[FromPath]` or `[FromNodeModules]` has
+  a name that shadows a public static class in any imported namespace.
+
+  Suggested rename: `<Name>Bin` / `<Name>Tool` / `<Name>Cli` / `<Name>Exe`.
+  The analyzer short-circuits silently for fields that already use one of
+  these suffixes — no false positives on the canonical fix.
+
+  Skips:
+  - `using static X.Y.Z;` — brings members in, not the type
+  - `using Foo = X.Y.Z;` — alias-resolution is handled differently
+  - Non-static classes (instance members can't be called as `Name.Verb()`)
+  - Internal accessibility (can't be the `using` target cross-assembly)
+
+  14 new tests in `FromPathFieldShadowingAnalyzerTests` covering Cargo /
+  Tauri shadowing detection, suggested-rename convention recognition, no-
+  false-positives on un-imported satellite namespaces / non-static
+  classes / internal accessibility, and special using forms (static / alias).
+
+### Added — TAMP1001 / TAMP1002 diagnostic suppressors (TAM-206)
+
+DasBook canary friction batch #3 #9 (2026-05-13). The adopter idiom
+`[FromPath("cargo")] readonly Tool CargoBin = null!;` triggers
+`CS0414: The field is assigned but its value is never used` when the field
+is bound by Tamp's reflection binder but never explicitly read by adopter
+code — a common case after bypassing one wrapper (e.g. `Tauri.Build`) for
+another (`Cargo.Build`).
+
+- **`Tamp.Analyzers.ReflectionBoundFieldWarningSuppressor`** — Roslyn
+  `DiagnosticSuppressor` that silences:
+  - **CS0414** (TAMP1001) — "field is assigned but never used"
+  - **IDE0051** (TAMP1002) — "remove unused private member"
+
+  Fires only on fields decorated with any of `[FromPath]`,
+  `[FromNodeModules]`, `[Parameter]`, `[Secret]` (with or without the
+  `Attribute` suffix; namespace-qualified forms recognized too).
+
+  Ships bundled inside `Tamp.Core.nupkg` — adopters get the suppression
+  automatically on upgrade; no separate package, no analyzer settings to
+  configure.
+
+### Tests
+
+- **12 new tests** in `SkipTargetTests` — parsing (`--skip`, `--skip=X`,
+  `--skip-deps`, multiple `--skip`, missing-value error), executor behavior
+  (skip records as Skipped with correct reason; dependents still run;
+  multi-skip; skipping the root; --skip-deps with single + multiple roots;
+  default empty config preserves existing behavior).
+- **25 new tests** in `ReflectionBoundFieldWarningSuppressorTests` — attribute
+  recognition (short names, full names with `Attribute` suffix, namespace-
+  qualified, with constructor arguments, mixed attribute lists, case
+  sensitivity); control cases (no attributes, unrelated attributes, partial
+  name match); SuppressionDescriptors are correctly configured.
+- Total Tamp.Core.Tests: 659 (was 647). Total Tamp.Analyzers.Tests: 58 (was 33).
+  All green across net8 / net9 / net10.
+
 ## [1.8.0] — 2026-05-13 — OS temp-path factories + build-scoped scratch dirs (TAM-202)
 
 ### Added

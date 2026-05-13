@@ -118,16 +118,14 @@ public sealed class InitCommandTests : IDisposable
     }
 
     [Theory]
-    [InlineData("--template")]
     [InlineData("--template-source")]
     [InlineData("--offline")]
-    [InlineData("--force")]
     [InlineData("--with-ci")]
     [InlineData("--interactive")]
     public void Reserved_Flags_Exit_With_Clean_Message(string flag)
     {
         // Some of these reserve a value-token; pass a value to satisfy any consumer.
-        var args = flag is "--template" or "--template-source" or "--with-ci"
+        var args = flag is "--template-source" or "--with-ci"
             ? new[] { flag, "x", _root }
             : new[] { flag, _root };
 
@@ -137,6 +135,115 @@ public sealed class InitCommandTests : IDisposable
         var stderr = _stderr.ToString();
         Assert.Contains(flag, stderr);
         Assert.Contains("lands in", stderr);
+    }
+
+    // ─── TAM-122 / TAM-125: --template + --force ─────────────────────────
+
+    [Theory]
+    [InlineData("minimal")]
+    [InlineData("library")]
+    [InlineData("monorepo")]
+    public void Template_Flag_Selects_Embedded_Template(string templateName)
+    {
+        var exit = InitCommand.Run(
+            new[] { "--template", templateName, _root },
+            _stdout, _stderr);
+        Assert.Equal(InitCommand.ExitOk, exit);
+        var buildCs = System.IO.Path.Combine(_root, "build", "Build.cs");
+        Assert.True(System.IO.File.Exists(buildCs));
+    }
+
+    [Fact]
+    public void Template_Flag_Without_Value_Errors_With_Usage()
+    {
+        var exit = InitCommand.Run(new[] { "--template" }, _stdout, _stderr);
+        Assert.Equal(InitCommand.ExitUsage, exit);
+        Assert.Contains("--template requires a name", _stderr.ToString());
+    }
+
+    [Fact]
+    public void Unknown_Template_Name_Exits_With_TemplateNotFound()
+    {
+        var exit = InitCommand.Run(
+            new[] { "--template", "unknown-template", _root },
+            _stdout, _stderr);
+        Assert.Equal(InitCommand.ExitTemplateNotFound, exit);
+        Assert.Contains("no template named 'unknown-template'", _stderr.ToString());
+    }
+
+    [Fact]
+    public void Library_Template_Writes_Pack_Target()
+    {
+        var exit = InitCommand.Run(
+            new[] { "--template", "library", _root },
+            _stdout, _stderr);
+        Assert.Equal(InitCommand.ExitOk, exit);
+        var buildCs = System.IO.Path.Combine(_root, "build", "Build.cs");
+        var content = System.IO.File.ReadAllText(buildCs);
+        Assert.Contains("Target Pack", content);
+        Assert.Contains("NupkgOut", content);
+        Assert.Contains("DotNet.Pack", content);
+    }
+
+    [Fact]
+    public void Monorepo_Template_Writes_Test_Fanout_And_Ci_Aggregate()
+    {
+        var exit = InitCommand.Run(
+            new[] { "--template", "monorepo", _root },
+            _stdout, _stderr);
+        Assert.Equal(InitCommand.ExitOk, exit);
+        var content = System.IO.File.ReadAllText(System.IO.Path.Combine(_root, "build", "Build.cs"));
+        Assert.Contains("Target Test", content);
+        Assert.Contains("GlobFiles(\"**/*.Tests.csproj\")", content);
+        Assert.Contains("Target Ci", content);
+    }
+
+    [Fact]
+    public void Force_Flag_Overwrites_Existing_BuildCs()
+    {
+        // First run — succeeds.
+        var first = InitCommand.Run(new[] { _root }, _stdout, _stderr);
+        Assert.Equal(InitCommand.ExitOk, first);
+
+        // Second run without --force — refused.
+        var refused = InitCommand.Run(new[] { _root }, _stdout, _stderr);
+        Assert.Equal(InitCommand.ExitFileExists, refused);
+        Assert.Contains("already exists", _stderr.ToString());
+
+        _stdout.GetStringBuilder().Clear();
+        _stderr.GetStringBuilder().Clear();
+
+        // Third run WITH --force — succeeds, and the Build.cs differs since
+        // we used a different template.
+        var forced = InitCommand.Run(
+            new[] { "--template", "library", "--force", _root },
+            _stdout, _stderr);
+        Assert.Equal(InitCommand.ExitOk, forced);
+
+        var content = System.IO.File.ReadAllText(System.IO.Path.Combine(_root, "build", "Build.cs"));
+        Assert.Contains("Target Pack", content);    // library template overwrote the minimal one
+    }
+
+    [Fact]
+    public void Force_Flag_Result_Reports_Overwrote_Distinct_From_Wrote()
+    {
+        InitCommand.Run(new[] { _root }, _stdout, _stderr);
+        _stdout.GetStringBuilder().Clear();
+
+        var exit = InitCommand.Run(new[] { "--force", _root }, _stdout, _stderr);
+        Assert.Equal(InitCommand.ExitOk, exit);
+        Assert.Contains("overwrote", _stdout.ToString());
+    }
+
+    [Fact]
+    public void ListTemplates_Surface_Includes_All_Three_Embedded()
+    {
+        var exit = InitCommand.Run(new[] { "--list-templates" }, _stdout, _stderr);
+        Assert.Equal(InitCommand.ExitOk, exit);
+        var stdout = _stdout.ToString();
+        Assert.Contains("minimal", stdout);
+        Assert.Contains("library", stdout);
+        Assert.Contains("monorepo", stdout);
     }
 
     [Fact]
