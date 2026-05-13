@@ -8,6 +8,31 @@ Pre-1.0 versions may break public API freely between minor versions; the `0.x` l
 
 ## [Unreleased]
 
+## [1.4.2] — 2026-05-13 — TAMP001 analyzer bundled in Tamp.Core (TAM-175 part a)
+
+### Added
+
+- **`Tamp.Analyzers` ships bundled inside the Tamp.Core nupkg** at `analyzers/dotnet/cs/`.
+  Adopters who reference Tamp.Core get the analyzer automatically — no separate package
+  install. Disable per-project via `<NoWarn>$(NoWarn);TAMP001</NoWarn>` if needed.
+
+- **TAMP001 — `CommandPlan value is unobserved`** — warns at compile time when a method
+  invocation that returns `CommandPlan` (or `IEnumerable<CommandPlan>`) appears as a
+  statement expression inside an `Executes(Action)` lambda body. Catches the silent-no-op
+  footgun from TAM-175 at compile time rather than at "why did my target report Done in
+  6ms with no output?" time. 7 unit tests cover the rule's positive + negative cases.
+
+  Wrong shape that fires TAMP001:
+  ```csharp
+  Target Build => _ => _.Executes(() => { DotNet.Restore(); DotNet.Build(); });
+  //                                       ^^^^^^^^^^^^^^^^^   ^^^^^^^^^^^^^^^
+  //                              TAMP001 fires on both — both plans are constructed and dropped.
+  ```
+  Right shape:
+  ```csharp
+  Target Build => _ => _.Executes(() => new[] { DotNet.Restore(), DotNet.Build() });
+  ```
+
 ## [1.4.1] — 2026-05-13 — InternalsVisibleTo additions + Executes(Action) doc warning (TAM-175 part c)
 
 ### Added

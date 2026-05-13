@@ -17,4 +17,21 @@
     <PackageReference Include="Microsoft.Extensions.FileSystemGlobbing" />
   </ItemGroup>
 
+  <!-- Bundle the Tamp.Analyzers DLL as analyzers/dotnet/cs/ inside the Tamp.Core nupkg
+       (TAM-175 part a). Adopters who depend on Tamp.Core get the analyzer automatically
+       — no separate package install. The analyzer project is netstandard2.0 (Roslyn's
+       host requirement); the produced DLL ships inside Tamp.Core's nupkg only. -->
+  <ItemGroup>
+    <ProjectReference Include="..\Tamp.Analyzers\Tamp.Analyzers.csproj" PrivateAssets="all" ReferenceOutputAssembly="false" />
+  </ItemGroup>
+
+  <Target Name="IncludeAnalyzersInPackage" BeforeTargets="_GetPackageFiles">
+    <ItemGroup>
+      <None Include="..\Tamp.Analyzers\bin\$(Configuration)\netstandard2.0\Tamp.Analyzers.dll"
+            Pack="true"
+            PackagePath="analyzers/dotnet/cs/"
+            Visible="false" />
+    </ItemGroup>
+  </Target>
+
 </Project>

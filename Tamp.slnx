@@ -23,6 +23,7 @@
     <Project Path="src/Tamp.NetCli.V9/Tamp.NetCli.V9.csproj" />
     <Project Path="src/Tamp.NetCli.V10/Tamp.NetCli.V10.csproj" />
     <Project Path="src/Tamp.DotNetCoverage.V18/Tamp.DotNetCoverage.V18.csproj" />
+    <Project Path="src/Tamp.Analyzers/Tamp.Analyzers.csproj" />
   </Folder>
   <Folder Name="/build/">
     <Project Path="build/Build.csproj" />
@@ -34,5 +35,6 @@
     <Project Path="tests/Tamp.NetCli.V9.Tests/Tamp.NetCli.V9.Tests.csproj" />
     <Project Path="tests/Tamp.NetCli.V10.Tests/Tamp.NetCli.V10.Tests.csproj" />
     <Project Path="tests/Tamp.DotNetCoverage.V18.Tests/Tamp.DotNetCoverage.V18.Tests.csproj" />
+    <Project Path="tests/Tamp.Analyzers.Tests/Tamp.Analyzers.Tests.csproj" />
   </Folder>
 </Solution>
