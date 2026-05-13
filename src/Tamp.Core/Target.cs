@@ -273,6 +273,33 @@ public interface ITargetDefinition
     /// Build + Test). Each plan runs in its own process; failure of one stops the chain.
     /// </summary>
     ITargetDefinition Executes(Func<IEnumerable<CommandPlan>> planFactory);
+
+    /// <summary>
+    /// Async sibling of <see cref="Executes(Action)"/> — for target bodies that need
+    /// to <c>await</c> something (HTTP calls, async file I/O, REST diagnostics, etc.).
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// <c>Executes(async () =&gt; { await SomethingAsync(); })</c> matches THIS overload
+    /// because the lambda returns <see cref="Task"/>, not <see cref="Action"/>. The
+    /// framework awaits the returned Task synchronously at the target boundary, so
+    /// the target completes only after the async work is genuinely done — no silent
+    /// no-op (TAM-181 / TAMP003).
+    /// </para>
+    /// <para>
+    /// If you write an <c>async</c> lambda without returning a Task (i.e., it matches
+    /// <see cref="Executes(Action)"/>), the body becomes <c>async void</c>, control
+    /// returns immediately, and the framework cannot wait. TAMP003 fires at compile
+    /// time for this pattern.
+    /// </para>
+    /// </remarks>
+    ITargetDefinition Executes(Func<Task> asyncAction);
+
+    /// <summary>Async sibling of <see cref="Executes(Func{CommandPlan})"/>.</summary>
+    ITargetDefinition Executes(Func<Task<CommandPlan>> asyncPlanFactory);
+
+    /// <summary>Async sibling of <see cref="Executes(Func{IEnumerable{CommandPlan}})"/>.</summary>
+    ITargetDefinition Executes(Func<Task<IEnumerable<CommandPlan>>> asyncPlanFactory);
 }
 
 /// <summary>
@@ -305,6 +332,8 @@ internal sealed class TargetDefinition : ITargetDefinition
     private readonly List<string> _producedGlobs = [];
     private readonly List<Action> _actions = [];
     private readonly List<Func<IEnumerable<CommandPlan>>> _planFactories = [];
+    private readonly List<Func<Task>> _asyncActions = [];
+    private readonly List<Func<Task<IEnumerable<CommandPlan>>>> _asyncPlanFactories = [];
 
     private Phase _phase;
     private PhaseDescriptor? _phaseDescriptor;
@@ -631,6 +660,24 @@ internal sealed class TargetDefinition : ITargetDefinition
         return this;
     }
 
+    public ITargetDefinition Executes(Func<Task> asyncAction)
+    {
+        _asyncActions.Add(asyncAction);
+        return this;
+    }
+
+    public ITargetDefinition Executes(Func<Task<CommandPlan>> asyncPlanFactory)
+    {
+        _asyncPlanFactories.Add(async () => new[] { await asyncPlanFactory().ConfigureAwait(false) });
+        return this;
+    }
+
+    public ITargetDefinition Executes(Func<Task<IEnumerable<CommandPlan>>> asyncPlanFactory)
+    {
+        _asyncPlanFactories.Add(asyncPlanFactory);
+        return this;
+    }
+
     /// <summary>Freeze the definition into an immutable <see cref="TargetSpec"/>.</summary>
     internal TargetSpec Build(string name) => new()
     {
@@ -672,6 +719,8 @@ internal sealed class TargetDefinition : ITargetDefinition
         RetryableExitCodes = _retryableExitCodes,
         Actions = _actions.ToArray(),
         PlanFactories = _planFactories.ToArray(),
+        AsyncActions = _asyncActions.ToArray(),
+        AsyncPlanFactories = _asyncPlanFactories.ToArray(),
     };
 }
 
@@ -723,4 +772,16 @@ public sealed record TargetSpec
     public IReadOnlyList<Action> Actions { get; init; } = Array.Empty<Action>();
     public IReadOnlyList<Func<IEnumerable<CommandPlan>>> PlanFactories { get; init; }
         = Array.Empty<Func<IEnumerable<CommandPlan>>>();
+
+    /// <summary>Async actions registered via <see cref="ITargetDefinition.Executes(Func{Task})"/>.
+    /// Awaited synchronously at the target boundary in the executor (TAM-181 — eliminates the
+    /// async-void silent-no-op symptom).</summary>
+    public IReadOnlyList<Func<Task>> AsyncActions { get; init; } = Array.Empty<Func<Task>>();
+
+    /// <summary>Async plan factories registered via the
+    /// <see cref="ITargetDefinition.Executes(Func{Task{CommandPlan}})"/> /
+    /// <see cref="ITargetDefinition.Executes(Func{Task{System.Collections.Generic.IEnumerable{CommandPlan}}})"/>
+    /// overloads. Awaited synchronously then dispatched like the sync PlanFactories.</summary>
+    public IReadOnlyList<Func<Task<IEnumerable<CommandPlan>>>> AsyncPlanFactories { get; init; }
+        = Array.Empty<Func<Task<IEnumerable<CommandPlan>>>>();
 }

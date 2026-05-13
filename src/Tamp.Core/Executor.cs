@@ -245,8 +245,22 @@ public sealed class Executor
                 foreach (var action in spec.Actions)
                     action();
 
+                // Async-action bridge (TAM-181): await Task-returning lambdas at the target
+                // boundary. .GetAwaiter().GetResult() rather than .Wait() so the caller sees
+                // the original exception type, not AggregateException.
+                foreach (var asyncAction in spec.AsyncActions)
+                    asyncAction().GetAwaiter().GetResult();
+
                 var exit = 0;
-                foreach (var factory in spec.PlanFactories)
+
+                // Resolve async plan factories first (await once, then dispatch like sync).
+                // Splicing into the sync loop preserves the existing FailureMode / exit-code
+                // behavior; the only difference is the .GetAwaiter().GetResult() boundary.
+                var allFactories = spec.PlanFactories.Concat(
+                    spec.AsyncPlanFactories.Select<Func<Task<IEnumerable<CommandPlan>>>, Func<IEnumerable<CommandPlan>>>(
+                        af => () => af().GetAwaiter().GetResult()));
+
+                foreach (var factory in allFactories)
                 {
                     foreach (var plan in factory())
                     {
@@ -503,7 +517,11 @@ public sealed class Executor
                     }
                     _log.WriteRaw($"==> {sub.Name} (failure handler for {failedTargetName})");
                     foreach (var action in sub.Actions) action();
-                    foreach (var factory in sub.PlanFactories)
+                    foreach (var asyncAction in sub.AsyncActions) asyncAction().GetAwaiter().GetResult();
+                    var subAllFactories = sub.PlanFactories.Concat(
+                        sub.AsyncPlanFactories.Select<Func<Task<IEnumerable<CommandPlan>>>, Func<IEnumerable<CommandPlan>>>(
+                            af => () => af().GetAwaiter().GetResult()));
+                    foreach (var factory in subAllFactories)
                     {
                         foreach (var plan in factory())
                         {

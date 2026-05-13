@@ -8,6 +8,49 @@ Pre-1.0 versions may break public API freely between minor versions; the `0.x` l
 
 ## [Unreleased]
 
+## [1.5.0] — 2026-05-13 — async Executes overloads + TAMP002/TAMP003 analyzers + TAMP001.md doc
+
+### Added
+
+- **Three async `Executes(...)` overloads** on `ITargetDefinition` (TAM-181). Targets can
+  now use `async () => await ...` lambdas directly without the `.GetAwaiter().GetResult()`
+  bridge ceremony. The framework awaits the returned Task synchronously at the target
+  boundary inside the Executor.
+
+  ```csharp
+  ITargetDefinition Executes(Func<Task> asyncAction);
+  ITargetDefinition Executes(Func<Task<CommandPlan>> asyncPlanFactory);
+  ITargetDefinition Executes(Func<Task<IEnumerable<CommandPlan>>> asyncPlanFactory);
+  ```
+
+  Surfaced during Strata's PR #226 adoption sweep where `async () => await mgmt.GetConfigReferencesAsync()`
+  matched the existing `Executes(Action)` overload and silently no-op'd (state machine became
+  `async void`, control returned to Tamp before the await completed). The natural shape now
+  binds to `Func<Task>` and behaves correctly.
+
+- **TAMP002 — `TampBuild subclass missing Execute<T>(args) dispatch in Main`** (TAM-179).
+  Severity: Error. Fires when the compilation contains a class derived from `Tamp.TampBuild`
+  but the assembly's `Main(string[])` method doesn't call `Execute` on a TampBuild-derived
+  type. Catches the regression pattern that bit `tamp-ado-git` during the 2026-05-13 wave
+  (default empty `Program.cs` Main + missing `build/Build.cs`) — `dotnet tamp Ci` failed
+  with CS5001 at Release-pipeline time even though the satellite's slnx CI passed. Scoped
+  strictly-to-Main for v0.1 per strata-scott's design vote (b); the call-graph-walk
+  refinement (accepting `Execute` in a method Main delegates to) lands when an adopter
+  hits it.
+
+- **TAMP003 — `async lambda passed to Executes(Action) becomes async void`** (TAM-182).
+  Severity: Warning. Fires at compile time when an async lambda binds to `Executes(Action)`
+  rather than `Executes(Func<Task>)` AND the lambda body contains at least one `await`.
+  Doubles as a soft adoption signal for the 1.5.0 overloads — adopters who haven't bumped
+  Tamp.Core still get a build-time signal that the shape is wrong.
+
+### Docs
+
+- **`docs/analyzers/TAMP001.md`** — help-page target for the `HelpLinkUri` referenced
+  by the TAMP001 diagnostic since 1.4.2. Patch authored by strata-scott from the
+  adopter-who-just-hit-it perspective; structure trap → why → fix (three patterns) →
+  suppression → why this matters. Resolves the 404 from earlier in the wave.
+
 ## [1.4.2] — 2026-05-13 — TAMP001 analyzer bundled in Tamp.Core (TAM-175 part a)
 
 ### Added
