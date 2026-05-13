@@ -54,6 +54,77 @@ public abstract partial class TampBuild
     /// </summary>
     public static AbsolutePath TemporaryDirectory => (RootDirectory / ".tamp" / "temp").EnsureDirectoryExists();
 
+    /// <summary>
+    /// Build-instance tracking for <see cref="Scratch"/>-allocated temp dirs.
+    /// Cleaned up at end of <see cref="Execute{T}"/> (success or failure)
+    /// unless the <c>TAMP_KEEP_SCRATCH</c> env var is set.
+    /// </summary>
+    private readonly List<AbsolutePath> _scratchDirs = new();
+
+    /// <summary>
+    /// Allocate a uniquely-named scratch directory tied to this build's
+    /// lifetime. The directory exists on disk when this method returns; at
+    /// end of <see cref="Execute{T}"/> it is deleted recursively (success or
+    /// failure paths both clean up).
+    /// </summary>
+    /// <param name="namePrefix">
+    /// Optional prefix for the directory name. Defaults to <c>tamp-scratch</c>.
+    /// Useful for grepping <c>/tmp</c> when <c>TAMP_KEEP_SCRATCH=1</c> is set.
+    /// </param>
+    /// <remarks>
+    /// Set <c>TAMP_KEEP_SCRATCH=1</c> in the environment to preserve scratch
+    /// directories after the build exits — useful for post-mortem inspection
+    /// of intermediate artifacts. Default is "delete, including on failure"
+    /// so a flaky build doesn't slowly fill <c>/tmp</c>.
+    /// </remarks>
+    protected AbsolutePath Scratch(string? namePrefix = null)
+    {
+        var prefix = string.IsNullOrWhiteSpace(namePrefix) ? "tamp-scratch" : namePrefix.Trim();
+        var dir = AbsolutePath.CreateTempDirectory(prefix);
+        lock (_scratchDirs) _scratchDirs.Add(dir);
+        return dir;
+    }
+
+    /// <summary>
+    /// Delete every scratch directory allocated via <see cref="Scratch"/>
+    /// during this build, unless <c>TAMP_KEEP_SCRATCH</c> is set. Safe to call
+    /// multiple times; subsequent calls are no-ops because the tracking list
+    /// is cleared on first call.
+    /// </summary>
+    /// <remarks>
+    /// Delete errors are swallowed — the cleanup is best-effort. If a child
+    /// process holds an open handle to a scratch file at exit, Windows will
+    /// refuse the delete; the user can recover via <c>TAMP_KEEP_SCRATCH=1</c>
+    /// and a manual <c>rm -rf</c>, but the build's exit code is not affected
+    /// either way.
+    /// </remarks>
+    internal void CleanUpScratchDirs()
+    {
+        var keep = Environment.GetEnvironmentVariable("TAMP_KEEP_SCRATCH");
+        if (!string.IsNullOrEmpty(keep)
+            && !keep.Equals("0", StringComparison.Ordinal)
+            && !keep.Equals("false", StringComparison.OrdinalIgnoreCase))
+            return;
+
+        List<AbsolutePath> snapshot;
+        lock (_scratchDirs)
+        {
+            snapshot = new List<AbsolutePath>(_scratchDirs);
+            _scratchDirs.Clear();
+        }
+        foreach (var dir in snapshot)
+        {
+            try { if (dir.DirectoryExists()) Directory.Delete(dir.Value, recursive: true); }
+            catch { /* best effort — see remarks */ }
+        }
+    }
+
+    /// <summary>Test-only access to the scratch-dir tracking list.</summary>
+    internal IReadOnlyList<AbsolutePath> ScratchDirsSnapshot()
+    {
+        lock (_scratchDirs) return _scratchDirs.ToList();
+    }
+
     private static CiHost? _ciHostCache;
     private static bool _ciHostResolved;
 
@@ -233,9 +304,10 @@ public abstract partial class TampBuild
     /// <summary>Top-level build entry point. Pass <c>args</c> from <c>Main</c>.</summary>
     public static int Execute<T>(string[] args) where T : TampBuild, new()
     {
+        T? build = null;
         try
         {
-            var build = new T();
+            build = new T();
 
             // Parameter binding happens before target discovery so that any
             // [Parameter] reads inside a target's authoring lambda see the
@@ -355,6 +427,14 @@ public abstract partial class TampBuild
         {
             Console.Error.WriteLine($"tamp: {ex.Message}");
             return 1;
+        }
+        finally
+        {
+            // Best-effort cleanup of build-scoped scratch directories. Runs
+            // for every exit path including the InvalidOperationException
+            // catch above so a flaky build doesn't slowly fill /tmp.
+            try { build?.CleanUpScratchDirs(); }
+            catch { /* swallow — cleanup must not change the build's exit code */ }
         }
     }
 

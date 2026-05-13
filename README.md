@@ -33,55 +33,117 @@ Recent surface (1.1.0 → 1.6.0):
 - **`[FromPath("name")]` and `[FromNodeModules("name")]`** (1.1.0) — auto-inject native or workspace-local `Tool` references.
 - **`HttpProbe.WaitForHealthy`** (`Tamp.Http` 0.1.1) — post-deploy smoke pattern for `SmokeQa` targets.
 
-### Published satellites
+### Published satellites — full ecosystem
 
-The wiki's [Module Catalog](https://github.com/tamp-build/tamp/wiki/Module-Catalog) is the canonical list. Highlights:
+The wiki's [Module Catalog](https://github.com/tamp-build/tamp/wiki/Module-Catalog) is the canonical structured reference. The table below is the **complete picture from this repo's vantage point** — every first-party `Tamp.*` package currently shipping, what it wraps, and where its source lives. If you (or an agent) need to understand the Tamp surface, start here.
 
-| Package family | Repo | Latest |
+#### Framework + global tool (`tamp` repo)
+
+| Package | Wraps / does | Latest |
 |---|---|---|
-| `Tamp.Core` / `Tamp.Cli` / `dotnet-tamp` | this repo (`tamp`) | **1.6.0** |
-| `Tamp.NetCli.V8` / `V9` / `V10` | this repo | **1.4.0+** |
-| `Tamp.DotNetCoverage.V18` | this repo | **1.3.0** |
-| `Tamp.Docker.V27` | [`tamp-docker`](https://github.com/tamp-build/tamp-docker) | **0.3.1** (BuildKit by default) |
-| `Tamp.Helm.V3` | [`tamp-helm`](https://github.com/tamp-build/tamp-helm) | **0.1.0** |
-| `Tamp.SonarScanner.V10` / `SonarScannerCli.V6` | [`tamp-sonar`](https://github.com/tamp-build/tamp-sonar) | **0.3.1** |
-| `Tamp.EFCore.V8` / `V9` / `V10` | [`tamp-ef`](https://github.com/tamp-build/tamp-ef) | **0.3.1** |
-| `Tamp.GitVersion.V6` | [`tamp-gitversion`](https://github.com/tamp-build/tamp-gitversion) | **0.1.1** |
-| `Tamp.ReportGenerator.V5` | [`tamp-reportgenerator`](https://github.com/tamp-build/tamp-reportgenerator) | **0.1.1** |
-| `Tamp.GitHubCli.V2` | [`tamp-gh`](https://github.com/tamp-build/tamp-gh) | **0.1.1** |
-| `Tamp.Yarn.V4` | [`tamp-yarn`](https://github.com/tamp-build/tamp-yarn) | **0.1.1** |
-| `Tamp.Npm.V10` | [`tamp-npm`](https://github.com/tamp-build/tamp-npm) | **0.1.0** |
-| `Tamp.Turbo.V2` | [`tamp-turbo`](https://github.com/tamp-build/tamp-turbo) | **0.2.1** |
-| `Tamp.GraphQLCodegen.V5` | [`tamp-graphql-codegen`](https://github.com/tamp-build/tamp-graphql-codegen) | **0.1.1** |
-| `Tamp.Vite.V5` (Vite + Vitest) | [`tamp-vite`](https://github.com/tamp-build/tamp-vite) | **0.1.1** |
-| `Tamp.Playwright.V1` | [`tamp-playwright`](https://github.com/tamp-build/tamp-playwright) | **0.1.1** |
-| `Tamp.TruffleHog.V3` | [`tamp-trufflehog`](https://github.com/tamp-build/tamp-trufflehog) | **0.1.1** |
-| `Tamp.CodeQL.V2` | [`tamp-codeql`](https://github.com/tamp-build/tamp-codeql) | **0.1.1** |
-| `Tamp.Syft` | [`tamp-syft`](https://github.com/tamp-build/tamp-syft) | **0.1.0** (SBOM — CycloneDX + SPDX) |
-| `Tamp.Grype` | [`tamp-grype`](https://github.com/tamp-build/tamp-grype) | **0.1.0** (CVE scanner with EPSS + KEV) |
-| `Tamp.AzureCli.V2` | [`tamp-azure-cli`](https://github.com/tamp-build/tamp-azure-cli) | **0.1.2** |
-| `Tamp.AzureStaticWebApps.V2` | [`tamp-azure-static-web-apps`](https://github.com/tamp-build/tamp-azure-static-web-apps) | **0.1.1** |
-| `Tamp.AzureFunctionsCoreTools.V4` | [`tamp-azure-functions-core-tools`](https://github.com/tamp-build/tamp-azure-functions-core-tools) | **0.1.1** |
-| `Tamp.AzureAppService` | [`tamp-azure-app-service`](https://github.com/tamp-build/tamp-azure-app-service) | **0.1.0** |
-| `Tamp.Kudu` | [`tamp-kudu`](https://github.com/tamp-build/tamp-kudu) | **0.2.2** |
-| `Tamp.PostgresFlex` | [`tamp-postgres-flex`](https://github.com/tamp-build/tamp-postgres-flex) | **0.1.0** |
-| `Tamp.Bicep` | [`tamp-bicep`](https://github.com/tamp-build/tamp-bicep) | **0.1.1** |
-| `Tamp.AdoGit` | [`tamp-ado-git`](https://github.com/tamp-build/tamp-ado-git) | **0.1.0** |
-| `Tamp.AdoRest.V7` | [`tamp-ado-rest`](https://github.com/tamp-build/tamp-ado-rest) | **0.1.0** |
-| `Tamp.AdoServiceConnection.V1` | [`tamp-ado-service-connection`](https://github.com/tamp-build/tamp-ado-service-connection) | **0.1.1** |
-| `Tamp.AdjacentContainer` | [`tamp-adjacent-container`](https://github.com/tamp-build/tamp-adjacent-container) | **0.1.1** |
-| `Tamp.Cargo` | [`tamp-cargo`](https://github.com/tamp-build/tamp-cargo) | **0.1.0** |
-| `Tamp.Tauri.V2` | [`tamp-tauri`](https://github.com/tamp-build/tamp-tauri) | **0.1.0** |
-| `Tamp.Msix` | [`tamp-msix`](https://github.com/tamp-build/tamp-msix) | **0.1.0** |
-| `Tamp.MicrosoftStoreCli` | [`tamp-msstore-cli`](https://github.com/tamp-build/tamp-msstore-cli) | **0.1.0** |
-| `Tamp.Sccache` | [`tamp-sccache`](https://github.com/tamp-build/tamp-sccache) | **0.1.0** |
-| `Tamp.Coverlet.V6` | [`tamp-coverlet`](https://github.com/tamp-build/tamp-coverlet) | **0.1.0** |
-| `Tamp.Testcontainers.V4` | [`tamp-testcontainers`](https://github.com/tamp-build/tamp-testcontainers) | **0.1.0** |
-| `Tamp.ServiceBus.V7` | [`tamp-servicebus`](https://github.com/tamp-build/tamp-servicebus) | **0.1.0** (admin + topology convergence) |
-| `Tamp.Http` | [`tamp-http`](https://github.com/tamp-build/tamp-http) | **0.1.1** (HTTP-API library + `HttpProbe.WaitForHealthy`) |
-| `Tamp.Templates.AspNet` (NuGet-distributed scaffold) | [`tamp-templates`](https://github.com/tamp-build/tamp-templates) | **0.1.0** (preview; CLI 0.2.0+ loads) |
+| `Tamp.Core` | The framework itself — target dependency graph executor, parameter injection, path utilities, process invocation primitives, host detection, secret handling, dry-run support. Bundles the TAMP001-004 Roslyn analyzers at `analyzers/dotnet/cs/`. | **1.7.0** |
+| `Tamp.Cli` | The global tool, bare-command flavor: `tamp <target>`. | **1.7.0** |
+| `dotnet-tamp` | The global tool, dotnet-verb flavor: `dotnet tamp <target>`. | **1.7.0** |
+| `Tamp.NetCli.V8` / `V9` / `V10` | The .NET 8 / 9 / 10 SDK CLI (`dotnet build`, `test`, `pack`, `publish`, `restore`, `clean`, `format`). One package per SDK major; pin to the SDK your project targets. | **1.4.0+** |
+| `Tamp.DotNetCoverage.V18` | `dotnet-coverage` collector + merge. | **1.3.0** |
+
+#### Containers + build
+
+| Package | Wraps / does | Repo | Latest |
+|---|---|---|---|
+| `Tamp.Docker.V27` | Docker 27.x CLI. 0.3.0+ routes `Docker.Build` to BuildKit (`docker buildx build`); pre-BuildKit available as `Docker.LegacyBuild`. Sub-facades: `Docker.Compose.*`, `Docker.Buildx.*`. Also `tag`, `push`, `pull`, `login`. | [`tamp-docker`](https://github.com/tamp-build/tamp-docker) | **0.3.1** |
+| `Tamp.Helm.V3` | Helm v3 CLI — Upgrade, Template, Lint, Package, Push. | [`tamp-helm`](https://github.com/tamp-build/tamp-helm) | **0.1.0** |
+| `Tamp.Sccache` | [mozilla/sccache](https://github.com/mozilla/sccache) shared compilation cache. Transparent `RUSTC_WRAPPER`. Backends: local disk, S3, Azure Blob, GCS, Redis, memcached, GitHub Actions cache. | [`tamp-sccache`](https://github.com/tamp-build/tamp-sccache) | **0.1.0** |
+| `Tamp.AdjacentContainer` | Fixture-side dual-mode container acquisition for integration tests — adjacent sidecar via env var, local Testcontainers spawn as fallback. Postgres, Azurite, Service Bus emulator. | [`tamp-adjacent-container`](https://github.com/tamp-build/tamp-adjacent-container) | **0.1.1** |
+| `Tamp.AdjacentContainer.Provisioning` | CI-side companion. Builds deterministic `docker-compose.yml` for sidecar resources + emits the env-var contract `Tamp.AdjacentContainer` reads. Pairs with `Tamp.Docker.V27.Docker.Compose.Up/Down` for lifecycle. | [`tamp-adjacent-container-provisioning`](https://github.com/tamp-build/tamp-adjacent-container-provisioning) | **0.1.0** |
+| `Tamp.Testcontainers.V4` | Diagnostic library for testcontainers-dotnet pipelines. Probes Docker capability + sibling-container restrictions for CI gating. | [`tamp-testcontainers`](https://github.com/tamp-build/tamp-testcontainers) | **0.1.0** |
+
+#### .NET coverage + EF + version
+
+| Package | Wraps / does | Repo | Latest |
+|---|---|---|---|
+| `Tamp.Coverlet.V6` | Coverlet 6 config-builder — type-safe Format / Include / Exclude / UseSourceLink for `dotnet test --collect "XPlat Code Coverage"`. | [`tamp-coverlet`](https://github.com/tamp-build/tamp-coverlet) | **0.1.0** |
+| `Tamp.ReportGenerator.V5` | ReportGenerator — coverage HTML / badge / markdown emission. | [`tamp-reportgenerator`](https://github.com/tamp-build/tamp-reportgenerator) | **0.1.1** |
+| `Tamp.EFCore.V8` / `V9` / `V10` | `dotnet ef` migrations per major. V10 includes `MigrationFanout` for multi-tenant SaaS migration loops (per-tenant invocation, retry, fail-fast, strict serial ordering at concurrency=1). | [`tamp-ef`](https://github.com/tamp-build/tamp-ef) | **0.3.1** |
+| `Tamp.GitVersion.V6` | GitVersion 6 — SemVer from git history. | [`tamp-gitversion`](https://github.com/tamp-build/tamp-gitversion) | **0.1.1** |
+
+#### JavaScript / TypeScript toolchain
+
+| Package | Wraps / does | Repo | Latest |
+|---|---|---|---|
+| `Tamp.Yarn.V4` | Yarn Berry 4 — `install`, `run`, workspaces, `npm publish`. | [`tamp-yarn`](https://github.com/tamp-build/tamp-yarn) | **0.1.1** |
+| `Tamp.Npm.V10` | npm 10+ CLI — sibling to `Tamp.Yarn.V4`. | [`tamp-npm`](https://github.com/tamp-build/tamp-npm) | **0.1.0** |
+| `Tamp.Turbo.V2` | Turborepo 2 — `run`, `prune --docker`, `ls`, `info`, `daemon`. | [`tamp-turbo`](https://github.com/tamp-build/tamp-turbo) | **0.2.1** |
+| `Tamp.Vite.V5` | Vite 5 (`dev`, `build`, `preview`, `optimize`) **and** Vitest 1 (`run`, `watch`, `related`, `bench`, `typecheck`). | [`tamp-vite`](https://github.com/tamp-build/tamp-vite) | **0.1.1** |
+| `Tamp.GraphQLCodegen.V5` | `graphql-code-generator` 5 — `generate`, `init`, `--watch`, `--require`. | [`tamp-graphql-codegen`](https://github.com/tamp-build/tamp-graphql-codegen) | **0.1.1** |
+| `Tamp.Playwright.V1` | Playwright 1 — `test`, `install`, `codegen`, `show-report`, `merge-reports`, sharded e2e. | [`tamp-playwright`](https://github.com/tamp-build/tamp-playwright) | **0.1.1** |
+
+#### Rust + Microsoft Store desktop ship chain
+
+End-to-end: Rust core → Tauri bundle → MSIX package → Partner Center submission. Each stage a typed Tamp target.
+
+| Package | Wraps / does | Repo | Latest |
+|---|---|---|---|
+| `Tamp.Cargo` | `cargo` CLI — `build`, `test`, `check`, `clippy`, `fmt`, `run`, `bench`, `doc`, `update`. First non-.NET satellite. | [`tamp-cargo`](https://github.com/tamp-build/tamp-cargo) | **0.1.0** |
+| `Tamp.Tauri.V2` | Tauri 2.x CLI — `build`, `info`, `icon`, `migrate`, `signer generate/sign`. Plus the load-bearing `Tauri.ExternalBinPath(srcTauri, name, target-triple)` helper that types Tauri's `binaries/<name>-<triple>[.exe]` sidecar contract. | [`tamp-tauri`](https://github.com/tamp-build/tamp-tauri) | **0.2.0** |
+| `Tamp.Msix` | Windows MSIX toolchain — `makeappx` (pack / unpack / bundle), `signtool` (sign / verify, with password-protected PFX). Plus `Msix.SetAppxManifestVersion` for 3-part SemVer → 4-part MSIX version normalization. | [`tamp-msix`](https://github.com/tamp-build/tamp-msix) | **0.2.0** |
+| `Tamp.MicrosoftStoreCli` | [microsoft/msstore-cli](https://github.com/microsoft/msstore-cli) — Microsoft Store Partner Center submission API. Reconfigure (service-principal auth via `Secret`), Publish (MSIX upgrade), Submission lifecycle, Flights, Rollout halt / finalize. Replaces the manual Partner Center web-UI submission. | [`tamp-msstore-cli`](https://github.com/tamp-build/tamp-msstore-cli) | **0.1.0** |
+
+#### Azure + ADO ops
+
+| Package | Wraps / does | Repo | Latest |
+|---|---|---|---|
+| `Tamp.AzureCli.V2` | `az` 2.x — full subscription / resource / identity surface. Access tokens typed as `Secret` via `Account.GetAccessTokenAsSecret`. | [`tamp-azure-cli`](https://github.com/tamp-build/tamp-azure-cli) | **0.1.2** |
+| `Tamp.Bicep` | Bicep CLI (`build`, `lint`, `format`, `version`) plus `az deployment group create` via the unified facade. | [`tamp-bicep`](https://github.com/tamp-build/tamp-bicep) | **0.1.1** |
+| `Tamp.AzureAppService` | App Service slot orchestration + lifecycle — `webapp deployment slot swap / list / create / delete`. | [`tamp-azure-app-service`](https://github.com/tamp-build/tamp-azure-app-service) | **0.1.0** |
+| `Tamp.Kudu` | Azure App Service Kudu REST API + adjacent Management API endpoints. KuduClient: vfs read/write, command exec, deploy. ManagementClient: stop/start/restart, publishing credentials, config-references (KV-ref resolution), app settings list/set. DeploymentClient: ZipDeploy (sync + async-poll). | [`tamp-kudu`](https://github.com/tamp-build/tamp-kudu) | **0.2.2** |
+| `Tamp.PostgresFlex` | Azure Database for PostgreSQL Flexible Server admin — lifecycle, firewall, parameters. | [`tamp-postgres-flex`](https://github.com/tamp-build/tamp-postgres-flex) | **0.1.0** |
+| `Tamp.AzureFunctionsCoreTools.V4` | Azure Functions Core Tools (`func`) 4.x — publish, log streaming, settings sync. Access token typed as `Secret` via stdin. | [`tamp-azure-functions-core-tools`](https://github.com/tamp-build/tamp-azure-functions-core-tools) | **0.1.1** |
+| `Tamp.AzureStaticWebApps.V2` | `@azure/static-web-apps-cli` (swa) — Azure SWA deploy CLI. | [`tamp-azure-static-web-apps`](https://github.com/tamp-build/tamp-azure-static-web-apps) | **0.1.1** |
+| `Tamp.ServiceBus.V7` / `V8` | Azure Service Bus admin CRUD + topology convergence helper (`EnsureRuleAsync`, `DeleteXxxIfExistsAsync`). | [`tamp-servicebus`](https://github.com/tamp-build/tamp-servicebus) | **0.1.0** |
+| `Tamp.AdoGit` | PAT-injected git wrapper for Azure DevOps — bakes `-c http.extraHeader=…` into every fetch / push / clone so adopters don't reinvent PAT-auth git plumbing. | [`tamp-ado-git`](https://github.com/tamp-build/tamp-ado-git) | **0.1.0** |
+| `Tamp.AdoRest.V7` | Azure DevOps REST API 7.1 — typed surface for pull requests, builds, service endpoints, environments, agent pools, branch policies. PAT typed as `Secret`. Built on `Tamp.Http`. | [`tamp-ado-rest`](https://github.com/tamp-build/tamp-ado-rest) | **0.1.0** |
+| `Tamp.AdoServiceConnection.V1` | End-to-end Azure DevOps WIF (Workload Identity Federation) service connection creation. Orchestrates `az` + ADO REST. | [`tamp-ado-service-connection`](https://github.com/tamp-build/tamp-ado-service-connection) | **0.1.1** |
+
+#### Supply-chain security
+
+One focused tool per axis. No overlap.
+
+| Package | Wraps / does | Axis | Repo | Latest |
+|---|---|---|---|---|
+| `Tamp.TruffleHog.V3` | [trufflesecurity/trufflehog](https://github.com/trufflesecurity/trufflehog) — secret scanning across git / GitHub / filesystem / Docker / S3 / GCS / etc. ~800+ detectors with live verification. | leaked secrets | [`tamp-trufflehog`](https://github.com/tamp-build/tamp-trufflehog) | **0.1.1** |
+| `Tamp.CodeQL.V2` | CodeQL 2 — database, github upload-results, resolve, pack, query. PAT via stdin. | code-pattern vulns (SQLi, XSS, taint) | [`tamp-codeql`](https://github.com/tamp-build/tamp-codeql) | **0.1.1** |
+| `Tamp.Syft` | [anchore/syft](https://github.com/anchore/syft) — SBOM generator. Auto-detects 20+ ecosystems (Rust, npm, .NET, Go, Java, Python, PHP, …). Emits CycloneDX (JSON/XML) or SPDX (JSON/tag-value). | what's inside the artifact | [`tamp-syft`](https://github.com/tamp-build/tamp-syft) | **0.1.0** |
+| `Tamp.Grype` | [anchore/grype](https://github.com/anchore/grype) — CVE scanner. Reads syft SBOMs. EPSS + KEV + CVSS composite 0-10 risk scoring. `--fail-on severity` for CI gating. | dep CVEs / vuln matching | [`tamp-grype`](https://github.com/tamp-build/tamp-grype) | **0.1.0** |
+| `Tamp.SonarScanner.V10` / `Tamp.SonarScannerCli.V6` | SonarScanner for .NET 10 + the standalone CLI. SonarQube Community Edition branch-strip handling. | code quality + coverage gating | [`tamp-sonar`](https://github.com/tamp-build/tamp-sonar) | **0.3.1** |
+
+#### Source control / issue tracking
+
+| Package | Wraps / does | Repo | Latest |
+|---|---|---|---|
+| `Tamp.GitHubCli.V2` | `gh` CLI — release, pr, issue, api, repo, auth. | [`tamp-gh`](https://github.com/tamp-build/tamp-gh) | **0.1.1** |
+| `Tamp.YouTrack` | YouTrack REST API — typed Issues client (create / update / search / set-state / project resolve). Bearer permanent token via `Secret`. Built on `Tamp.Http`. | [`tamp-youtrack`](https://github.com/tamp-build/tamp-youtrack) | **0.1.0** |
+
+#### Foundation libraries + templates
+
+| Package | Wraps / does | Repo | Latest |
+|---|---|---|---|
+| `Tamp.Http` | Foundation `TampApiClient` base class for HTTP-API satellites — `Secret`-redacted auth, JSON serialization, error mapping. Plus `HttpProbe.WaitForHealthy` for post-deploy smoke. Shared substrate beneath `Tamp.Kudu` / `Tamp.AdoRest.V7` / `Tamp.MicrosoftStoreCli` / `Tamp.PostgresFlex` / `Tamp.YouTrack`. | [`tamp-http`](https://github.com/tamp-build/tamp-http) | **0.1.1** |
+| `Tamp.Templates.AspNet` | NuGet-distributed scaffold template loaded by `tamp init --template aspnet`. Preview; CLI 0.2.0+ resolves. | [`tamp-templates`](https://github.com/tamp-build/tamp-templates) | **0.1.0** |
+
+NuGet listing: <https://www.nuget.org/profiles/tamp> · the `Tamp.*` prefix is reserved to the project so every package on the listing carries the verified-publisher checkmark.
 
 Third-party tool wrappers ship from satellite repos so each tool's release cadence (Docker every 2 weeks, Vite every quarter, Playwright every 4–6 weeks, etc.) doesn't gate Tamp core releases. Same `PackageReference` story for the consumer; different release schedules for the maintainer.
+
+#### Worked-example stacks
+
+Common adopter scenarios pair specific satellites together:
+
+- **Polyglot Microsoft Store desktop app**: `Tamp.Cargo` → `Tamp.Tauri.V2` → `Tamp.Msix` → `Tamp.MicrosoftStoreCli`, optionally + `Tamp.Sccache` for Rust compile cache.
+- **Azure-deployed .NET service**: `Tamp.NetCli.V10` (build) + `Tamp.EFCore.V10` (migrations) + `Tamp.AzureCli.V2` (auth) + `Tamp.Kudu` (deploy) + `Tamp.AzureAppService` (slot swap).
+- **Helm-deployed cluster app**: `Tamp.Docker.V27` (image) + `Tamp.Helm.V3` (chart) + `Tamp.GitHubCli.V2` (release).
+- **Compliance-aware ship**: any stack + `Tamp.Syft` (SBOM) + `Tamp.Grype` (CVE gate) + `Tamp.TruffleHog.V3` (secrets) + `Tamp.CodeQL.V2` (SAST).
+- **Integration tests with sidecars**: `Tamp.AdjacentContainer.Provisioning` (CI-side generator) + `Tamp.Docker.V27.Docker.Compose` (lifecycle) + `Tamp.AdjacentContainer` (fixture-side) + `Tamp.EFCore.V10` (migrations against the sidecar).
 
 All satellites ship through **Tamp itself** — `dotnet tamp Ci && dotnet tamp Push` running in the satellite repos' CI, dogfooding the framework end-to-end. See any satellite's `build/Build.cs` and `.github/workflows/release.yml` for the pattern.
 

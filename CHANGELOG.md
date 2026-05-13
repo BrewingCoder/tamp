@@ -8,6 +8,87 @@ Pre-1.0 versions may break public API freely between minor versions; the `0.x` l
 
 ## [Unreleased]
 
+## [1.8.0] — 2026-05-13 — OS temp-path factories + build-scoped scratch dirs (TAM-202)
+
+### Added
+
+DasBook canary feedback was: adopters coming from NUKE expect FS operations
+on `AbsolutePath` (path.CreateDirectory(), path.WriteText(), etc.). Most of
+that surface was already on the type — we mirrored NUKE's idiom early — but
+two real gaps remained: temp-path factories and lifecycle-managed scratch
+directories.
+
+**`AbsolutePath` — new static factories**
+
+- **`AbsolutePath.GetTempDirectoryRoot()`** — host OS's temp root as an
+  `AbsolutePath`. Non-creating; useful when composing temp paths manually.
+
+- **`AbsolutePath.CreateTempDirectory(string? namePrefix = null)`** — creates
+  a uniquely-named subdirectory under the OS temp root, returns the path.
+  Default prefix `tamp`; explicit prefix makes post-mortem grepping of
+  `/tmp` straightforward.
+
+- **`AbsolutePath.CreateTempFile(string? extension = null)`** — creates a
+  uniquely-named empty file under the OS temp root. Leading dot on the
+  extension is optional (`".pfx"` and `"pfx"` produce the same result).
+
+These are non-tracked — caller manages cleanup. For build scripts use
+`TampBuild.Scratch(...)` instead, which tracks the directory and deletes
+it at end of build.
+
+**`TampBuild` — build-scoped scratch lifecycle**
+
+- **`protected AbsolutePath Scratch(string? namePrefix = null)`** — allocate
+  a temp directory tied to the build instance's lifetime. Auto-deleted at
+  end of `Execute<T>` on every exit path (success, target failure,
+  `InvalidOperationException`).
+
+  ```csharp
+  class Build : TampBuild
+  {
+      Target StageMsix => _ => _
+          .Executes(() =>
+          {
+              var staging = Scratch("msix-staging");
+              // Build the MSIX layout under `staging`; auto-cleaned at exit.
+              Msix.SetAppxManifestVersion(staging / "AppxManifest.xml", Version);
+          });
+  }
+  ```
+
+- **`TAMP_KEEP_SCRATCH=1`** env override — set to preserve scratch dirs
+  after the build exits. Accepts any non-empty value except `0` /
+  `false` (case-insensitive). Useful for post-mortem inspection. Without
+  it, every build cleans up its own `/tmp` debris.
+
+**`AbsolutePath` — new convenience methods**
+
+- **`CreateDirectory()`** — NUKE-style alias for `EnsureDirectoryExists()`.
+  Idempotent, returns this for chaining.
+- **`EnsureParentDirectoryExists()`** — ensures the parent dir exists.
+  Returns this for chaining. Idiomatic before writing a file whose
+  containing dir may not exist.
+- **`Touch()`** — create an empty file if missing, update mtime if present.
+  Parent dir is created as needed.
+- **`AppendAllText(string)`** — append to file (create if missing).
+- **`SizeBytes()`** — file size in bytes. Throws `FileNotFoundException`
+  if the path isn't a file.
+- **`CopyToDirectory(AbsolutePath dir, bool overwrite = true)`** —
+  file-into-directory copy preserving the filename. Distinct from
+  `CopyTo(...)` which treats its arg as the full destination path.
+
+### Notes
+
+- Additive surface only — no breaking changes. Adopters on 1.7.0 upgrade
+  without code edits.
+- `TampBuild.TemporaryDirectory` (the shared `<repo>/.tamp/temp` location)
+  is unchanged; `Scratch(...)` is for per-allocation isolation and
+  automatic cleanup, which `TemporaryDirectory` doesn't provide.
+- Tests: 30 new unit tests in `AbsolutePathTests` + 12 new in
+  `TampBuildScratchTests` (concurrency, env-override variants, idempotence,
+  cleanup-with-content, dir-as-source rejection, missing-parent creation).
+  Total Tamp.Core.Tests count: 647 → all passing across net8/net9/net10.
+
 ## [1.7.0] — 2026-05-13 — `WrapperSettingsBase` inheritance helper (TAM-197)
 
 ### Added

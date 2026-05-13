@@ -36,6 +36,55 @@ public sealed record AbsolutePath
         return new AbsolutePath(Path.GetFullPath(path));
     }
 
+    // ---- OS temp-path factories ----
+
+    /// <summary>
+    /// The host OS's temp directory root (e.g. <c>/tmp</c>, <c>%TEMP%</c>) as an
+    /// <see cref="AbsolutePath"/>. Non-creating; the directory always exists per
+    /// OS contract. Useful when an adopter wants to compose temp paths manually
+    /// rather than via <see cref="CreateTempDirectory"/>.
+    /// </summary>
+    public static AbsolutePath GetTempDirectoryRoot() => new(Path.GetFullPath(Path.GetTempPath()));
+
+    /// <summary>
+    /// Create a uniquely-named subdirectory under the OS temp root and return its
+    /// <see cref="AbsolutePath"/>. The directory exists on disk when this method
+    /// returns. The caller is responsible for cleanup; for build scripts use
+    /// <see cref="TampBuild.Scratch"/> instead — it tracks the directory and
+    /// deletes it at end of build (success or failure).
+    /// </summary>
+    /// <param name="namePrefix">
+    /// Optional prefix for the directory name (final shape: <c>&lt;prefix&gt;-&lt;guid&gt;</c>).
+    /// Defaults to <c>tamp</c>. Useful for grepping <c>/tmp</c> during a
+    /// post-mortem.
+    /// </param>
+    public static AbsolutePath CreateTempDirectory(string? namePrefix = null)
+    {
+        var prefix = string.IsNullOrWhiteSpace(namePrefix) ? "tamp" : namePrefix.Trim();
+        var dir = Path.Combine(Path.GetTempPath(), $"{prefix}-{Guid.NewGuid():N}");
+        Directory.CreateDirectory(dir);
+        return new AbsolutePath(Path.GetFullPath(dir));
+    }
+
+    /// <summary>
+    /// Create a uniquely-named empty file under the OS temp root and return its
+    /// <see cref="AbsolutePath"/>. The file exists (zero bytes) on disk when
+    /// this method returns. The caller is responsible for cleanup.
+    /// </summary>
+    /// <param name="extension">
+    /// Optional file extension. Leading dot is optional: both <c>".pfx"</c> and
+    /// <c>"pfx"</c> produce the same result.
+    /// </param>
+    public static AbsolutePath CreateTempFile(string? extension = null)
+    {
+        var ext = string.IsNullOrEmpty(extension)
+            ? string.Empty
+            : (extension.StartsWith('.') ? extension : "." + extension);
+        var path = Path.Combine(Path.GetTempPath(), $"tamp-{Guid.NewGuid():N}{ext}");
+        File.Create(path).Dispose();
+        return new AbsolutePath(Path.GetFullPath(path));
+    }
+
     /// <summary>Implicit string conversion for interop with string-taking APIs.</summary>
     public static implicit operator string(AbsolutePath path) => path.Value;
 
@@ -81,6 +130,39 @@ public sealed record AbsolutePath
         return this;
     }
 
+    /// <summary>
+    /// NUKE-style alias for <see cref="EnsureDirectoryExists"/>. Idempotent —
+    /// calling on an already-existing directory is a no-op. Returns this path
+    /// for chaining.
+    /// </summary>
+    public AbsolutePath CreateDirectory() => EnsureDirectoryExists();
+
+    /// <summary>
+    /// Ensure the parent directory of this path exists. Returns this path for
+    /// chaining. Idiomatic before writing a file whose containing directory
+    /// may not exist yet.
+    /// </summary>
+    public AbsolutePath EnsureParentDirectoryExists()
+    {
+        Parent?.EnsureDirectoryExists();
+        return this;
+    }
+
+    /// <summary>
+    /// Create an empty file at this path if it doesn't exist; update the last
+    /// write time to <see cref="DateTime.UtcNow"/> if it does. Idempotent.
+    /// Parent directory is created as needed.
+    /// </summary>
+    public AbsolutePath Touch()
+    {
+        Parent?.EnsureDirectoryExists();
+        if (FileExists())
+            File.SetLastWriteTimeUtc(Value, DateTime.UtcNow);
+        else
+            File.Create(Value).Dispose();
+        return this;
+    }
+
     public AbsolutePath DeleteFile()
     {
         if (FileExists()) File.Delete(Value);
@@ -117,6 +199,24 @@ public sealed record AbsolutePath
             File.Copy(Value, destination.Value, overwrite);
         }
         return destination;
+    }
+
+    /// <summary>
+    /// Copy this file <em>into</em> <paramref name="destinationDirectory"/>,
+    /// preserving the filename. Returns the new path inside the destination
+    /// directory. Distinct from <see cref="CopyTo"/>, which treats its argument
+    /// as the full destination path.
+    /// </summary>
+    public AbsolutePath CopyToDirectory(AbsolutePath destinationDirectory, bool overwrite = true)
+    {
+        if (destinationDirectory is null) throw new ArgumentNullException(nameof(destinationDirectory));
+        if (!FileExists())
+            throw new InvalidOperationException(
+                $"CopyToDirectory only operates on files; '{Value}' is not a file.");
+        destinationDirectory.EnsureDirectoryExists();
+        var dst = destinationDirectory / Name;
+        File.Copy(Value, dst.Value, overwrite);
+        return dst;
     }
 
     public AbsolutePath MoveTo(AbsolutePath destination, bool overwrite = false)
@@ -170,6 +270,25 @@ public sealed record AbsolutePath
         Parent?.EnsureDirectoryExists();
         File.WriteAllBytes(Value, content);
         return this;
+    }
+
+    public AbsolutePath AppendAllText(string content)
+    {
+        Parent?.EnsureDirectoryExists();
+        File.AppendAllText(Value, content);
+        return this;
+    }
+
+    // ---- File size ----
+
+    /// <summary>
+    /// File size in bytes. Throws <see cref="FileNotFoundException"/> if the
+    /// path is not a file (missing or a directory).
+    /// </summary>
+    public long SizeBytes()
+    {
+        if (!FileExists()) throw new FileNotFoundException("Path is not a file.", Value);
+        return new FileInfo(Value).Length;
     }
 
     // ---- Hashing ----

@@ -378,4 +378,265 @@ public sealed class AbsolutePathTests : IDisposable
         var dirs = dir.GlobDirectories("**/bin", "Foo/bin").ToList();
         Assert.Single(dirs);
     }
+
+    // ---- OS temp-path factories (TAM-202) ----
+
+    [Fact]
+    public void GetTempDirectoryRoot_Returns_Existing_Absolute_Path()
+    {
+        var root = AbsolutePath.GetTempDirectoryRoot();
+        Assert.True(Path.IsPathRooted(root.Value));
+        Assert.True(root.DirectoryExists());
+    }
+
+    [Fact]
+    public void CreateTempDirectory_Creates_Unique_Dirs_Under_Temp_Root()
+    {
+        var a = AbsolutePath.CreateTempDirectory();
+        var b = AbsolutePath.CreateTempDirectory();
+        try
+        {
+            Assert.True(a.DirectoryExists());
+            Assert.True(b.DirectoryExists());
+            Assert.NotEqual(a.Value, b.Value);
+            Assert.StartsWith(AbsolutePath.GetTempDirectoryRoot().Value, a.Value);
+            Assert.Contains("tamp-", a.Name);
+        }
+        finally
+        {
+            try { Directory.Delete(a.Value, recursive: true); } catch { }
+            try { Directory.Delete(b.Value, recursive: true); } catch { }
+        }
+    }
+
+    [Fact]
+    public void CreateTempDirectory_Honors_NamePrefix()
+    {
+        var p = AbsolutePath.CreateTempDirectory("mybuild");
+        try
+        {
+            Assert.StartsWith("mybuild-", p.Name);
+        }
+        finally
+        {
+            try { Directory.Delete(p.Value, recursive: true); } catch { }
+        }
+    }
+
+    [Fact]
+    public void CreateTempDirectory_Whitespace_Prefix_Falls_Back_To_Default()
+    {
+        var p = AbsolutePath.CreateTempDirectory("   ");
+        try
+        {
+            Assert.StartsWith("tamp-", p.Name);
+        }
+        finally
+        {
+            try { Directory.Delete(p.Value, recursive: true); } catch { }
+        }
+    }
+
+    [Fact]
+    public void CreateTempFile_Creates_Empty_File()
+    {
+        var p = AbsolutePath.CreateTempFile();
+        try
+        {
+            Assert.True(p.FileExists());
+            Assert.Equal(0, p.SizeBytes());
+            Assert.Empty(p.Extension);
+        }
+        finally
+        {
+            try { File.Delete(p.Value); } catch { }
+        }
+    }
+
+    [Theory]
+    [InlineData(".pfx", ".pfx")]
+    [InlineData("pfx",  ".pfx")]
+    [InlineData(".tar.gz", ".gz")]   // GetExtension returns the LAST dot-segment
+    public void CreateTempFile_Extension_With_Or_Without_Leading_Dot(string input, string expectedReportedExt)
+    {
+        var p = AbsolutePath.CreateTempFile(input);
+        try
+        {
+            Assert.True(p.FileExists());
+            Assert.Equal(expectedReportedExt, p.Extension);
+        }
+        finally
+        {
+            try { File.Delete(p.Value); } catch { }
+        }
+    }
+
+    [Fact]
+    public void CreateTempFile_Unique_Names_Under_Concurrency()
+    {
+        // 50 parallel calls — Guid.NewGuid collisions are vanishingly unlikely
+        // but the test asserts the collection-of-unique-names contract directly.
+        var paths = Enumerable.Range(0, 50).AsParallel()
+            .Select(_ => AbsolutePath.CreateTempFile(".txt"))
+            .ToList();
+        try
+        {
+            Assert.Equal(paths.Count, paths.Select(p => p.Value).Distinct().Count());
+            Assert.All(paths, p => Assert.True(p.FileExists()));
+        }
+        finally
+        {
+            foreach (var p in paths) { try { File.Delete(p.Value); } catch { } }
+        }
+    }
+
+    // ---- Convenience aliases (TAM-202) ----
+
+    [Fact]
+    public void CreateDirectory_Aliases_EnsureDirectoryExists()
+    {
+        var d = P("alias-target");
+        Assert.False(d.DirectoryExists());
+        var result = d.CreateDirectory();
+        Assert.True(d.DirectoryExists());
+        Assert.Same(d, result);
+        // Idempotent.
+        d.CreateDirectory();
+        Assert.True(d.DirectoryExists());
+    }
+
+    [Fact]
+    public void EnsureParentDirectoryExists_Creates_Missing_Parent()
+    {
+        var deeplyNested = P("a/b/c/file.txt");
+        Assert.False(deeplyNested.Parent!.DirectoryExists());
+        deeplyNested.EnsureParentDirectoryExists();
+        Assert.True(deeplyNested.Parent!.DirectoryExists());
+    }
+
+    [Fact]
+    public void EnsureParentDirectoryExists_Returns_Self()
+    {
+        var p = P("ret/file.txt");
+        Assert.Same(p, p.EnsureParentDirectoryExists());
+    }
+
+    // ---- Touch (TAM-202) ----
+
+    [Fact]
+    public void Touch_Creates_Missing_File_Including_Parent_Dirs()
+    {
+        var p = P("touched/dir/file.txt");
+        Assert.False(p.FileExists());
+        p.Touch();
+        Assert.True(p.FileExists());
+        Assert.Equal(0, p.SizeBytes());
+    }
+
+    [Fact]
+    public void Touch_Updates_Mtime_On_Existing_File()
+    {
+        var p = P("existing.txt").WriteAllText("hello");
+        var stale = DateTime.UtcNow.AddDays(-7);
+        File.SetLastWriteTimeUtc(p.Value, stale);
+        Assert.Equal(stale, File.GetLastWriteTimeUtc(p.Value));
+
+        p.Touch();
+
+        var fresh = File.GetLastWriteTimeUtc(p.Value);
+        Assert.True(fresh > stale.AddDays(6), $"mtime not bumped: {fresh} vs {stale}");
+        Assert.Equal("hello", p.ReadAllText()); // content preserved
+    }
+
+    // ---- AppendAllText (TAM-202) ----
+
+    [Fact]
+    public void AppendAllText_Creates_File_With_Initial_Content()
+    {
+        var p = P("appended.txt");
+        p.AppendAllText("line1\n");
+        Assert.Equal("line1\n", p.ReadAllText());
+    }
+
+    [Fact]
+    public void AppendAllText_Appends_To_Existing()
+    {
+        var p = P("appended.txt").WriteAllText("line1\n");
+        p.AppendAllText("line2\n");
+        Assert.Equal("line1\nline2\n", p.ReadAllText());
+    }
+
+    // ---- SizeBytes (TAM-202) ----
+
+    [Fact]
+    public void SizeBytes_Reports_Accurate_File_Length()
+    {
+        var p = P("sized.bin").WriteAllBytes(new byte[] { 1, 2, 3, 4, 5 });
+        Assert.Equal(5L, p.SizeBytes());
+    }
+
+    [Fact]
+    public void SizeBytes_Throws_For_Missing_File()
+    {
+        var p = P("nope.txt");
+        Assert.Throws<FileNotFoundException>(() => p.SizeBytes());
+    }
+
+    [Fact]
+    public void SizeBytes_Throws_For_Directory()
+    {
+        var d = P("subdir").EnsureDirectoryExists();
+        Assert.Throws<FileNotFoundException>(() => d.SizeBytes());
+    }
+
+    // ---- CopyToDirectory (TAM-202) ----
+
+    [Fact]
+    public void CopyToDirectory_Preserves_Filename_And_Creates_Dest()
+    {
+        var src = P("src.txt").WriteAllText("payload");
+        var dstDir = P("dst");
+        Assert.False(dstDir.DirectoryExists());
+        var copied = src.CopyToDirectory(dstDir);
+        Assert.Equal("src.txt", copied.Name);
+        Assert.Equal(dstDir.Value, copied.Parent!.Value);
+        Assert.Equal("payload", copied.ReadAllText());
+    }
+
+    [Fact]
+    public void CopyToDirectory_Overwrite_True_Replaces_Existing()
+    {
+        var src = P("src.txt").WriteAllText("new");
+        var dstDir = P("dst").EnsureDirectoryExists();
+        (dstDir / "src.txt").WriteAllText("old");
+        var copied = src.CopyToDirectory(dstDir, overwrite: true);
+        Assert.Equal("new", copied.ReadAllText());
+    }
+
+    [Fact]
+    public void CopyToDirectory_Overwrite_False_Throws_On_Existing()
+    {
+        var src = P("src.txt").WriteAllText("new");
+        var dstDir = P("dst").EnsureDirectoryExists();
+        (dstDir / "src.txt").WriteAllText("old");
+        Assert.Throws<IOException>(() => src.CopyToDirectory(dstDir, overwrite: false));
+    }
+
+    [Fact]
+    public void CopyToDirectory_Throws_When_Source_Not_File()
+    {
+        var dirAsSrc = P("realdir").EnsureDirectoryExists();
+        var dstDir = P("dst");
+        Assert.Throws<InvalidOperationException>(() => dirAsSrc.CopyToDirectory(dstDir));
+
+        var missing = P("missing.txt");
+        Assert.Throws<InvalidOperationException>(() => missing.CopyToDirectory(dstDir));
+    }
+
+    [Fact]
+    public void CopyToDirectory_Null_Destination_Throws()
+    {
+        var src = P("src.txt").WriteAllText("");
+        Assert.Throws<ArgumentNullException>(() => src.CopyToDirectory(null!));
+    }
 }

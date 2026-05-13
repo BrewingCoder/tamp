@@ -47,6 +47,30 @@ public sealed class ParameterBinderTests
         [Parameter] public string Configuration = "Debug";
     }
 
+    // TAM-167 — readonly fields must bind. HoldFast hit this on a pre-fix Tamp.Core
+    // (the binder used to early-out on `f.IsInitOnly`). The current binder writes
+    // readonly fields via reflection — supported as a first-class shape because the
+    // canonical Tamp build script uses `[Parameter] readonly string Configuration;`.
+#pragma warning disable CS0649 // never-assigned warning; the binder writes the value via reflection
+    private sealed class ReadonlyFieldBuild : TampBuild
+    {
+        [Parameter] public readonly string? Configuration;
+        public string? GetConfiguration() => Configuration;
+    }
+
+    private sealed class ReadonlyFieldWithDefaultBuild : TampBuild
+    {
+        [Parameter] public readonly string Configuration = "Debug";
+        public string GetConfiguration() => Configuration;
+    }
+
+    private sealed class PrivateReadonlyFieldBuild : TampBuild
+    {
+        [Parameter] readonly string? Configuration;
+        public string? GetConfiguration() => Configuration;
+    }
+#pragma warning restore CS0649
+
     private static string? NoEnv(string _) => null;
 
     // ---- CLI parsing ----
@@ -252,6 +276,50 @@ public sealed class ParameterBinderTests
         var b = new FieldBuild();
         ParameterBinder.Bind(b, ["--configuration", "Release"], NoEnv);
         Assert.Equal("Release", b.Configuration);
+    }
+
+    // ─── TAM-167 — readonly field binding ────────────────────────────────
+
+    [Fact]
+    public void Readonly_Field_With_Parameter_Binds_From_Cli()
+    {
+        var b = new ReadonlyFieldBuild();
+        ParameterBinder.Bind(b, ["--configuration", "Release"], NoEnv);
+        Assert.Equal("Release", b.GetConfiguration());
+    }
+
+    [Fact]
+    public void Readonly_Field_With_Parameter_Binds_From_Env()
+    {
+        var b = new ReadonlyFieldBuild();
+        ParameterBinder.Bind(b, [], k => k == "CONFIGURATION" ? "Release" : null);
+        Assert.Equal("Release", b.GetConfiguration());
+    }
+
+    [Fact]
+    public void Readonly_Field_Keeps_Default_When_No_Override()
+    {
+        var b = new ReadonlyFieldWithDefaultBuild();
+        ParameterBinder.Bind(b, [], NoEnv);
+        Assert.Equal("Debug", b.GetConfiguration());
+    }
+
+    [Fact]
+    public void Readonly_Field_Default_Overridden_By_Cli()
+    {
+        var b = new ReadonlyFieldWithDefaultBuild();
+        ParameterBinder.Bind(b, ["--configuration", "Release"], NoEnv);
+        Assert.Equal("Release", b.GetConfiguration());
+    }
+
+    [Fact]
+    public void Private_Readonly_Field_Also_Binds()
+    {
+        // The build-script idiom is `[Parameter] readonly string X;` (implicit private).
+        // BindingFlags.NonPublic covers it.
+        var b = new PrivateReadonlyFieldBuild();
+        ParameterBinder.Bind(b, ["--configuration", "Release"], NoEnv);
+        Assert.Equal("Release", b.GetConfiguration());
     }
 
     [Fact]
