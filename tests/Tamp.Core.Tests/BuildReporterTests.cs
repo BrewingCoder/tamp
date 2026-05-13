@@ -186,8 +186,13 @@ public sealed class BuildReporterTests
     public void Json_Reporter_Mode_Suppresses_Target_Header_Decorations()
     {
         var (output, _) = RunWithCapturedStdout(new[] { "Compile", "--reporter=json" });
-        // The text "==> Compile" header should NOT appear in JSON mode.
-        Assert.DoesNotContain("==>", output);
+        // The text "==> Compile" header should NOT appear in our JSON event lines.
+        // Filter to JSON lines only — sibling tests running in parallel can leak
+        // their own "==>" output into Console.Out (shared process-wide state) and
+        // we don't want the assertion to flake on that.
+        var jsonLines = output.Split('\n').Where(l => l.TrimStart().StartsWith('{')).ToList();
+        Assert.NotEmpty(jsonLines);
+        Assert.All(jsonLines, line => Assert.DoesNotContain("==>", line));
     }
 
     [Fact]
