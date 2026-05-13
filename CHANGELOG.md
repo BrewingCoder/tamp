@@ -8,6 +8,16 @@ Pre-1.0 versions may break public API freely between minor versions; the `0.x` l
 
 ## [Unreleased]
 
+## [1.5.1] — 2026-05-13 — grant `InternalsVisibleTo` to `Tamp.MicrosoftStoreCli`
+
+### Added
+
+- `InternalsVisibleTo("Tamp.MicrosoftStoreCli")` so the new satellite can `Reveal()`
+  Partner Center service-principal client secrets and certificate passwords when
+  building the `msstore reconfigure` command line. No public API surface change in
+  this package; pure access grant. Tamp.MicrosoftStoreCli 0.1.0 declares a minimum
+  Tamp.Core dependency of `[1.5.1,)` for this reason.
+
 ## [1.5.0] — 2026-05-13 — async Executes overloads + TAMP002/TAMP003 analyzers + TAMP001.md doc
 
 ### Added

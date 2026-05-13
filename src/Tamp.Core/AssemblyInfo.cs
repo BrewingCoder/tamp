@@ -39,3 +39,4 @@ using System.Runtime.CompilerServices;
 [assembly: InternalsVisibleTo("Tamp.AzureAppService")]
 [assembly: InternalsVisibleTo("Tamp.PostgresFlex")]
 [assembly: InternalsVisibleTo("Tamp.Kudu")]
+[assembly: InternalsVisibleTo("Tamp.MicrosoftStoreCli")]
