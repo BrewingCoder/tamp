@@ -33,11 +33,20 @@ public sealed class Secret
     public string Name { get; }
 
     /// <summary>
-    /// Exposes the underlying value. Internal access only — the runner uses this
-    /// when spawning a child process; tests use it via <see cref="System.Runtime.CompilerServices.InternalsVisibleToAttribute"/>.
-    /// Wrappers and build scripts cannot reach this method.
+    /// Returns the underlying secret value. Made <see langword="public"/> as of Tamp.Core 1.6.0
+    /// (TAM-196) — the previous <see langword="internal"/>-with-IVT gate had become friction
+    /// without protection. The real masking lives in <see cref="ToString"/>, the
+    /// <see cref="CommandPlan.Secrets"/> collection (process-trace masking), and the runner's
+    /// env-var masking — none of which depend on this method's visibility.
     /// </summary>
-    internal string Reveal() => _value;
+    /// <remarks>
+    /// Call sites that are NOT building command-line arguments, env vars, or otherwise plumbing
+    /// the value to a child process should be considered suspect. The <c>TAMP004</c> Roslyn
+    /// analyzer (ships bundled in <c>Tamp.Core</c> as of 1.6.0) flags <c>Reveal()</c> calls
+    /// outside of approved contexts (classes ending in <c>Settings</c> / <c>SettingsBase</c>,
+    /// and Tamp framework internals).
+    /// </remarks>
+    public string Reveal() => _value;
 
     /// <summary>
     /// Always returns a redacted form. Critically, this is what gets called by

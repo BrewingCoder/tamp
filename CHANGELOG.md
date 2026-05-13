@@ -8,6 +8,68 @@ Pre-1.0 versions may break public API freely between minor versions; the `0.x` l
 
 ## [Unreleased]
 
+## [1.6.0] — 2026-05-13 — kill the IVT-bump-per-satellite churn (TAM-196)
+
+### Changed
+
+- **`Secret.Reveal()` is now `public`** (was `internal`). The `[InternalsVisibleTo]`
+  gate had become friction without protection — any IVT-listed assembly could already
+  leak the value, and the real masking primitives (`Secret.ToString()` returning
+  `<Secret:Name>`, the `CommandPlan.Secrets` collection for process-trace masking,
+  and runner-side env-var masking) keep working regardless of `Reveal()`'s
+  visibility.
+
+  Every new satellite that handled a service-principal client secret / API key /
+  cert password used to require a Tamp.Core minor bump + nuget propagation wait +
+  satellite version-constraint update. Across the DasBook + Strata + HoldFast
+  onboarding wave that was killing velocity. This change ends it.
+
+  Visibility widening is non-breaking in C# — existing satellites continue to
+  compile and run unchanged. Net-new satellites just call `secret.Reveal()`
+  without needing to be added to any list anywhere.
+
+### Added
+
+- **TAMP004 Roslyn analyzer** — flags `Secret.Reveal()` calls outside an approved
+  context. Approved contexts:
+  - Classes whose name ends in `Settings` or `SettingsBase` (the canonical
+    Tamp wrapper-settings shape every satellite uses)
+  - Tamp framework internals: `Tamp.Core`, `Tamp.Cli`, `Tamp.NetCli.V*`
+  - Test code: classes ending in `Tests`, or namespaces containing `.Tests`
+
+  Catches the typical accidental-leak shape: `Logger.LogInformation("token={}",
+  secret.Reveal())` from a build script or random helper class. `Secret.ToString()`
+  would have masked the value; `Reveal()` defeats the masking.
+
+  Bundled inside `Tamp.Core.nupkg` at `analyzers/dotnet/cs/` (same pattern as
+  TAMP001 / TAMP002 / TAMP003) — adopters get it automatically with no extra
+  PackageReference.
+
+- 13 unit tests cover the approved-context heuristics + the negative cases that
+  should fire.
+
+### Removed (kind of)
+
+- Stopped adding net-new satellites to `Tamp.Core/AssemblyInfo.cs`'s
+  `[InternalsVisibleTo]` list. Existing entries are retained — they were there
+  for non-Reveal internal surfaces too, and removing them mid-flight is a
+  separate audit task. Going forward, no new satellite needs to be added.
+
+### Migration
+
+- **Adopters:** none needed. `Secret.Reveal()` going public is non-breaking; the
+  TAMP004 analyzer warns rather than errors by default.
+- **Satellite authors:** call `secret.Reveal()` from inside your `*Settings.cs` or
+  `*SettingsBase.cs` classes; the analyzer recognizes the shape. If you're
+  calling `Reveal()` from elsewhere, you'll get a TAMP004 warning pointing you
+  at the recommended pattern (route the value through a `*Settings` class building
+  a `CommandPlan`, or use `secret.ToString()` for diagnostic / logging
+  purposes).
+- **Follow-up:** TAM-197 layers a `WrapperSettingsBase` in Tamp.Core on top of
+  this, replacing the analyzer heuristic with type-system-level enforcement.
+  Backlogged until current canary-onboarding wave (DasBook + Strata + HoldFast)
+  completes.
+
 ## [1.5.2] — 2026-05-13 — grant `InternalsVisibleTo` to `Tamp.Sccache`
 
 ### Added

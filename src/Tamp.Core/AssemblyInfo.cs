@@ -1,5 +1,15 @@
 using System.Runtime.CompilerServices;
 
+// As of Tamp.Core 1.6.0 (TAM-196), Secret.Reveal() is public — gated by the TAMP004
+// Roslyn analyzer rather than by per-satellite InternalsVisibleTo. The InternalsVisibleTo
+// entries below are retained for now (a) for tests, and (b) for transitively-internal-touching
+// surfaces other than Reveal() — Tamp.Core may add other internal members in future minors
+// that named satellites continue to need. They are NOT load-bearing for Secret.Reveal().
+//
+// Do not add new satellite entries here. New satellites should not need internal access.
+// If a new satellite has a legitimate need for an internal Tamp.Core surface, file a ticket
+// to evaluate making that surface public + analyzer-gated like Secret was.
+
 [assembly: InternalsVisibleTo("Tamp.Core.Tests")]
 [assembly: InternalsVisibleTo("Tamp.Cli")]
 [assembly: InternalsVisibleTo("Tamp.NetCli.V8")]
@@ -39,5 +49,3 @@ using System.Runtime.CompilerServices;
 [assembly: InternalsVisibleTo("Tamp.AzureAppService")]
 [assembly: InternalsVisibleTo("Tamp.PostgresFlex")]
 [assembly: InternalsVisibleTo("Tamp.Kudu")]
-[assembly: InternalsVisibleTo("Tamp.MicrosoftStoreCli")]
-[assembly: InternalsVisibleTo("Tamp.Sccache")]
