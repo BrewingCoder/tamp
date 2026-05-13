@@ -8,7 +8,7 @@ A small-core, plugin-driven build automation framework for .NET 10 and beyond. C
 
 ## Status
 
-**Tamp.Core 1.4.0 shipped 2026-05-12.** API is stable; the `Tamp.*` NuGet prefix is reserved to the project. 24+ satellite packages are live on nuget.org and pin against core via `PackageReference`.
+**Tamp.Core 1.6.0 shipped 2026-05-13.** API is stable; the `Tamp.*` NuGet prefix is reserved to the project. **40+ satellite packages** are live on nuget.org and pin against core via `PackageReference`.
 
 **On-ramp (1.4.0+):**
 ```bash
@@ -20,42 +20,61 @@ dotnet tool restore && dotnet tamp Test
 
 `tamp init` is the canonical entry point for new adopters — it writes a minimal `build/Build.cs`, `build/Build.csproj`, `.config/dotnet-tools.json`, and `tamp.sh`/`tamp.cmd` shims. Works offline (template embedded in the CLI). Won't overwrite an existing scaffold.
 
-Recent surface (1.1.0 → 1.4.0):
+Recent surface (1.1.0 → 1.6.0):
+- **`Secret.Reveal()` is now `public`** + new **TAMP004 Roslyn analyzer** (1.6.0) — kills the IVT-bump-per-satellite churn. `Reveal()` is gated by an analyzer flag, not per-satellite `[InternalsVisibleTo]`. Net-new satellites no longer require a Tamp.Core release just to handle a service-principal secret or cert password.
+- **Analyzer family TAMP001–TAMP004** (1.4.2 → 1.6.0) — bundled inside `Tamp.Core.nupkg` at `analyzers/dotnet/cs/`. TAMP001 (unobserved CommandPlan), TAMP002 (missing entry point), TAMP003 (`async` lambda passed to `Executes(Action)`), TAMP004 (`Secret.Reveal()` outside approved context).
+- **Async `Executes(...)` overloads** (1.5.0) — `Executes(Func<Task>)`, `Executes(Func<Task<CommandPlan>>)`, `Executes(Func<Task<IEnumerable<CommandPlan>>>)`. Async lambdas now bind correctly without the `.GetAwaiter().GetResult()` bridge.
 - **`tamp init` scaffolder** (1.4.0) — three-line on-ramp; extension architecture for future NuGet-distributed templates ([`tamp-templates`](https://github.com/tamp-build/tamp-templates)).
 - **`params Target[]` overloads on lifecycle deps** (1.3.0) — `Ci.DependsOn(Test, Publish, FrontendBuild, DockerBuildBackend)` shape compiles via Method-handle reflection. NUKE's pattern.
 - **Object-init overloads on every wrapper** (1.2.0, 167 across the fleet) — `DotNet.Build(new() { Project = ..., Configuration = ... })` alongside the canonical fluent shape.
 - **`.Default()` / `.Internal()`** (1.1.0) — opt-in default-target marker; opt-out for internal helpers. `.TopLevel()` is now Obsolete (no-op).
-- **`CleanArtifacts()` helper** (1.1.0) — safe `bin`/`obj` cleanup scoped to `Solution.Projects`. Replaces the unsafe `**/bin` glob pattern that could delete `node_modules/*/bin` and tracked source scripts.
-- **`[CallerArgumentExpression]` overloads on `DependsOn`/`After`/`Before`/`Triggers`/`TriggeredBy`/`OnFailureOf`** (1.1.0) — `.DependsOn(Restore)` instead of `.DependsOn(nameof(Restore))`.
-- **`[FromPath("name")]` and `[FromNodeModules("name")]`** (1.1.0) — auto-inject native or workspace-local `Tool` references. No more hand-rolled PATH resolution.
-- **`[Solution("path")]` positional constructor** + subtree auto-discovery for monorepos.
+- **`CleanArtifacts()` helper** (1.1.0) — safe `bin`/`obj` cleanup scoped to `Solution.Projects`.
+- **`[CallerArgumentExpression]` overloads on `DependsOn`/`After`/`Before`/`Triggers`/`TriggeredBy`/`OnFailureOf`** (1.1.0).
+- **`[FromPath("name")]` and `[FromNodeModules("name")]`** (1.1.0) — auto-inject native or workspace-local `Tool` references.
 - **`HttpProbe.WaitForHealthy`** (`Tamp.Http` 0.1.1) — post-deploy smoke pattern for `SmokeQa` targets.
+
+### Published satellites
+
+The wiki's [Module Catalog](https://github.com/tamp-build/tamp/wiki/Module-Catalog) is the canonical list. Highlights:
 
 | Package family | Repo | Latest |
 |---|---|---|
-| `Tamp.Core` / `Tamp.Cli` / `dotnet-tamp` | this repo (`tamp`) | **1.4.0** |
-| `Tamp.NetCli.V8` / `V9` / `V10` | this repo | **1.3.0** |
+| `Tamp.Core` / `Tamp.Cli` / `dotnet-tamp` | this repo (`tamp`) | **1.6.0** |
+| `Tamp.NetCli.V8` / `V9` / `V10` | this repo | **1.4.0+** |
 | `Tamp.DotNetCoverage.V18` | this repo | **1.3.0** |
-| `Tamp.Helm.V3` | [`tamp-helm`](https://github.com/tamp-build/tamp-helm) | **0.1.0** |
 | `Tamp.Docker.V27` | [`tamp-docker`](https://github.com/tamp-build/tamp-docker) | **0.3.1** (BuildKit by default) |
+| `Tamp.Helm.V3` | [`tamp-helm`](https://github.com/tamp-build/tamp-helm) | **0.1.0** |
 | `Tamp.SonarScanner.V10` / `SonarScannerCli.V6` | [`tamp-sonar`](https://github.com/tamp-build/tamp-sonar) | **0.3.1** |
-| `Tamp.EFCore.V8` / `V9` / `V10` | [`tamp-ef`](https://github.com/tamp-build/tamp-ef) | **0.2.1** (per-tenant migration fan-out) |
+| `Tamp.EFCore.V8` / `V9` / `V10` | [`tamp-ef`](https://github.com/tamp-build/tamp-ef) | **0.3.1** |
 | `Tamp.GitVersion.V6` | [`tamp-gitversion`](https://github.com/tamp-build/tamp-gitversion) | **0.1.1** |
 | `Tamp.ReportGenerator.V5` | [`tamp-reportgenerator`](https://github.com/tamp-build/tamp-reportgenerator) | **0.1.1** |
 | `Tamp.GitHubCli.V2` | [`tamp-gh`](https://github.com/tamp-build/tamp-gh) | **0.1.1** |
 | `Tamp.Yarn.V4` | [`tamp-yarn`](https://github.com/tamp-build/tamp-yarn) | **0.1.1** |
+| `Tamp.Npm.V10` | [`tamp-npm`](https://github.com/tamp-build/tamp-npm) | **0.1.0** |
 | `Tamp.Turbo.V2` | [`tamp-turbo`](https://github.com/tamp-build/tamp-turbo) | **0.2.1** |
 | `Tamp.GraphQLCodegen.V5` | [`tamp-graphql-codegen`](https://github.com/tamp-build/tamp-graphql-codegen) | **0.1.1** |
 | `Tamp.Vite.V5` (Vite + Vitest) | [`tamp-vite`](https://github.com/tamp-build/tamp-vite) | **0.1.1** |
 | `Tamp.Playwright.V1` | [`tamp-playwright`](https://github.com/tamp-build/tamp-playwright) | **0.1.1** |
 | `Tamp.TruffleHog.V3` | [`tamp-trufflehog`](https://github.com/tamp-build/tamp-trufflehog) | **0.1.1** |
 | `Tamp.CodeQL.V2` | [`tamp-codeql`](https://github.com/tamp-build/tamp-codeql) | **0.1.1** |
-| `Tamp.AzureCli.V2` | [`tamp-azure-cli`](https://github.com/tamp-build/tamp-azure-cli) | **0.1.1** |
+| `Tamp.Syft` | [`tamp-syft`](https://github.com/tamp-build/tamp-syft) | **0.1.0** (SBOM — CycloneDX + SPDX) |
+| `Tamp.Grype` | [`tamp-grype`](https://github.com/tamp-build/tamp-grype) | **0.1.0** (CVE scanner with EPSS + KEV) |
+| `Tamp.AzureCli.V2` | [`tamp-azure-cli`](https://github.com/tamp-build/tamp-azure-cli) | **0.1.2** |
 | `Tamp.AzureStaticWebApps.V2` | [`tamp-azure-static-web-apps`](https://github.com/tamp-build/tamp-azure-static-web-apps) | **0.1.1** |
 | `Tamp.AzureFunctionsCoreTools.V4` | [`tamp-azure-functions-core-tools`](https://github.com/tamp-build/tamp-azure-functions-core-tools) | **0.1.1** |
+| `Tamp.AzureAppService` | [`tamp-azure-app-service`](https://github.com/tamp-build/tamp-azure-app-service) | **0.1.0** |
+| `Tamp.Kudu` | [`tamp-kudu`](https://github.com/tamp-build/tamp-kudu) | **0.2.2** |
+| `Tamp.PostgresFlex` | [`tamp-postgres-flex`](https://github.com/tamp-build/tamp-postgres-flex) | **0.1.0** |
 | `Tamp.Bicep` | [`tamp-bicep`](https://github.com/tamp-build/tamp-bicep) | **0.1.1** |
+| `Tamp.AdoGit` | [`tamp-ado-git`](https://github.com/tamp-build/tamp-ado-git) | **0.1.0** |
 | `Tamp.AdoRest.V7` | [`tamp-ado-rest`](https://github.com/tamp-build/tamp-ado-rest) | **0.1.0** |
 | `Tamp.AdoServiceConnection.V1` | [`tamp-ado-service-connection`](https://github.com/tamp-build/tamp-ado-service-connection) | **0.1.1** |
+| `Tamp.AdjacentContainer` | [`tamp-adjacent-container`](https://github.com/tamp-build/tamp-adjacent-container) | **0.1.1** |
+| `Tamp.Cargo` | [`tamp-cargo`](https://github.com/tamp-build/tamp-cargo) | **0.1.0** |
+| `Tamp.Tauri.V2` | [`tamp-tauri`](https://github.com/tamp-build/tamp-tauri) | **0.1.0** |
+| `Tamp.Msix` | [`tamp-msix`](https://github.com/tamp-build/tamp-msix) | **0.1.0** |
+| `Tamp.MicrosoftStoreCli` | [`tamp-msstore-cli`](https://github.com/tamp-build/tamp-msstore-cli) | **0.1.0** |
+| `Tamp.Sccache` | [`tamp-sccache`](https://github.com/tamp-build/tamp-sccache) | **0.1.0** |
 | `Tamp.Coverlet.V6` | [`tamp-coverlet`](https://github.com/tamp-build/tamp-coverlet) | **0.1.0** |
 | `Tamp.Testcontainers.V4` | [`tamp-testcontainers`](https://github.com/tamp-build/tamp-testcontainers) | **0.1.0** |
 | `Tamp.ServiceBus.V7` | [`tamp-servicebus`](https://github.com/tamp-build/tamp-servicebus) | **0.1.0** (admin + topology convergence) |
