@@ -229,8 +229,49 @@ public interface ITargetDefinition
     ITargetDefinition Retry(int count, Backoff backoff, params int[] retryableExitCodes);
 
     // The work
+
+    /// <summary>
+    /// Run a void-returning block — for non-command work (file I/O, log lines, computing
+    /// values). The lambda body executes; its return value (none) is discarded.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// <b>Footgun warning</b>: this overload is selected when the lambda body returns nothing.
+    /// If you call <c>DotNet.Build(...)</c>, <c>Yarn.Install(...)</c>, etc. inside a block-body
+    /// lambda without returning their <see cref="CommandPlan"/>s, those plans are constructed
+    /// but never executed — the target reports success in zero milliseconds with no output.
+    /// </para>
+    /// <para>
+    /// Wrong (silent no-op):
+    /// </para>
+    /// <code>
+    /// Target Build => _ => _.Executes(() =&gt; { DotNet.Restore(...); DotNet.Build(...); });
+    /// </code>
+    /// <para>
+    /// Right (returns an enumerable of plans):
+    /// </para>
+    /// <code>
+    /// Target Build => _ => _.Executes(() =&gt; new[] { DotNet.Restore(...), DotNet.Build(...) });
+    /// </code>
+    /// <para>
+    /// Or chain multiple <c>.Executes(...)</c> calls instead of putting them in one block.
+    /// The <see cref="Tamp.Core"/> analyzer (rule <c>TAMP001</c>) emits a compile-time warning
+    /// when this overload's body contains unobserved <see cref="CommandPlan"/> return values.
+    /// </para>
+    /// </remarks>
     ITargetDefinition Executes(Action action);
+
+    /// <summary>
+    /// Run a single <see cref="CommandPlan"/> produced by the factory. The plan's process is
+    /// spawned, monitored, and reported in the build summary.
+    /// </summary>
     ITargetDefinition Executes(Func<CommandPlan> planFactory);
+
+    /// <summary>
+    /// Run an enumerable of <see cref="CommandPlan"/>s in order. Use this overload when a
+    /// single target needs to invoke multiple commands sequentially (typical: Restore +
+    /// Build + Test). Each plan runs in its own process; failure of one stops the chain.
+    /// </summary>
     ITargetDefinition Executes(Func<IEnumerable<CommandPlan>> planFactory);
 }
 

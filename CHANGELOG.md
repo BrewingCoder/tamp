@@ -8,6 +8,33 @@ Pre-1.0 versions may break public API freely between minor versions; the `0.x` l
 
 ## [Unreleased]
 
+## [1.4.1] — 2026-05-13 — InternalsVisibleTo additions + Executes(Action) doc warning (TAM-175 part c)
+
+### Added
+
+- **`InternalsVisibleTo` for the new tamp-build satellites** so they can consume `Secret.Reveal()` for command-line construction:
+  `Tamp.AdjacentContainer`, `Tamp.AdoGit`, `Tamp.Npm.V10`, `Tamp.AzureAppService`,
+  `Tamp.PostgresFlex`, `Tamp.Kudu`. (Pre-existing satellites unchanged.)
+
+### Changed — docs
+
+- **`ITargetDefinition.Executes(...)` XML docs** now call out the three overloads explicitly and warn about the silent-no-op footgun on `Executes(Action)` when the lambda body contains unobserved `CommandPlan` return values. Reference: TAM-175 part c. The companion Roslyn analyzer (TAMP001) is filed separately and lands in a follow-up.
+
+  Wrong shape (silent no-op):
+  ```csharp
+  Target Build => _ => _.Executes(() => { DotNet.Restore(...); DotNet.Build(...); });
+  ```
+  Right shape:
+  ```csharp
+  Target Build => _ => _.Executes(() => new[] { DotNet.Restore(...), DotNet.Build(...) });
+  ```
+
+### Notes
+
+- Surfaced during the Strata Tamp adoption (STRATA-426 cutover). strata-scott hit the
+  `Executes(Action)` footgun in PR #226; one of the new packages from tonight's wave
+  exercises the `Secret.Reveal()` pattern that motivated the `InternalsVisibleTo` adds.
+
 ## [1.4.0] — 2026-05-12 — `tamp init` scaffolder + diagnostics emission contract (additive)
 
 ### Added — diagnostics emission via `System.Diagnostics.ActivitySource` (ADR 0018)
