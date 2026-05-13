@@ -8,6 +8,15 @@ Pre-1.0 versions may break public API freely between minor versions; the `0.x` l
 
 ## [Unreleased]
 
+## [1.5.2] — 2026-05-13 — grant `InternalsVisibleTo` to `Tamp.Sccache`
+
+### Added
+
+- `InternalsVisibleTo("Tamp.Sccache")` so the new compile-cache satellite can
+  `Reveal()` Azure connection strings and Redis passwords when emitting the
+  backend env vars (`SCCACHE_AZURE_CONNECTION_STRING`, `SCCACHE_REDIS_PASSWORD`).
+  Tamp.Sccache 0.1.0 declares a minimum Tamp.Core dependency of `[1.5.2,)`.
+
 ## [1.5.1] — 2026-05-13 — grant `InternalsVisibleTo` to `Tamp.MicrosoftStoreCli`
 
 ### Added

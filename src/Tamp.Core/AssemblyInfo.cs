@@ -40,3 +40,4 @@ using System.Runtime.CompilerServices;
 [assembly: InternalsVisibleTo("Tamp.PostgresFlex")]
 [assembly: InternalsVisibleTo("Tamp.Kudu")]
 [assembly: InternalsVisibleTo("Tamp.MicrosoftStoreCli")]
+[assembly: InternalsVisibleTo("Tamp.Sccache")]
