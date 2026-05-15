@@ -35,7 +35,23 @@ public static class DotNetCoverage
         if (inner is null) throw new ArgumentNullException(nameof(inner));
         var s = new DotNetCoverageCollectSettings();
         configure?.Invoke(s);
+        return BuildCollectPlan(tool, inner, s);
+    }
 
+    /// <summary>
+    /// Object-init equivalent of <see cref="Collect(Tool, CommandPlan, Action{DotNetCoverageCollectSettings}?)"/>
+    /// (TAM-161). Both shapes produce identical CommandPlans.
+    /// </summary>
+    public static CommandPlan Collect(Tool tool, CommandPlan inner, DotNetCoverageCollectSettings settings)
+    {
+        if (tool is null) throw new ArgumentNullException(nameof(tool));
+        if (inner is null) throw new ArgumentNullException(nameof(inner));
+        if (settings is null) throw new ArgumentNullException(nameof(settings));
+        return BuildCollectPlan(tool, inner, settings);
+    }
+
+    private static CommandPlan BuildCollectPlan(Tool tool, CommandPlan inner, DotNetCoverageCollectSettings s)
+    {
         var args = new List<string> { "collect" };
         if (!string.IsNullOrEmpty(s.SessionId)) { args.Add("--session-id"); args.Add(s.SessionId!); }
         if (!string.IsNullOrEmpty(s.Settings)) { args.Add("--settings"); args.Add(s.Settings!); }
@@ -83,7 +99,22 @@ public static class DotNetCoverage
         if (configure is null) throw new ArgumentNullException(nameof(configure));
         var s = new DotNetCoverageMergeSettings();
         configure(s);
+        return BuildMergePlan(tool, s);
+    }
 
+    /// <summary>
+    /// Object-init equivalent of <see cref="Merge(Tool, Action{DotNetCoverageMergeSettings})"/>
+    /// (TAM-161). Both shapes produce identical CommandPlans.
+    /// </summary>
+    public static CommandPlan Merge(Tool tool, DotNetCoverageMergeSettings settings)
+    {
+        if (tool is null) throw new ArgumentNullException(nameof(tool));
+        if (settings is null) throw new ArgumentNullException(nameof(settings));
+        return BuildMergePlan(tool, settings);
+    }
+
+    private static CommandPlan BuildMergePlan(Tool tool, DotNetCoverageMergeSettings s)
+    {
         if (s.Inputs.Count == 0)
             throw new InvalidOperationException("DotNetCoverage.Merge requires at least one input file.");
 
