@@ -191,8 +191,17 @@ public sealed class DotNetCoverageTests
     [Fact]
     public void Merge_Throws_On_Null_Configurer()
     {
+        // Cast disambiguates between the Action<TSettings> and TSettings overloads
+        // (TAM-161 — both accept `null`, so the bare `null!` is an ambiguous call).
         Assert.Throws<ArgumentNullException>(() =>
-            DotNetCoverage.Merge(FakeTool(), null!));
+            DotNetCoverage.Merge(FakeTool(), (Action<DotNetCoverageMergeSettings>)null!));
+    }
+
+    [Fact]
+    public void Merge_ObjectInit_Throws_On_Null_Settings()
+    {
+        Assert.Throws<ArgumentNullException>(() =>
+            DotNetCoverage.Merge(FakeTool(), (DotNetCoverageMergeSettings)null!));
     }
 
     [Fact]
