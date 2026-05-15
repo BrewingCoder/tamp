@@ -38,7 +38,12 @@ public sealed class MonorepoTemplate : IScaffoldTemplate
         yield return new FileSpec(ctx.RepoRoot / "tamp.cmd", MinimalTemplate.RenderTampCmd(), WriteMode.SkipIfExists);
     }
 
-    internal static string RenderBuildCs(ScaffoldContext ctx) => """
+    internal static string RenderBuildCs(ScaffoldContext ctx)
+        => ctx.SettingsStyle == SettingsStyle.Init
+            ? RenderBuildCsInitStyle()
+            : RenderBuildCsFluentStyle();
+
+    private static string RenderBuildCsFluentStyle() => """
         using Tamp;
         using Tamp.NetCli.V10;
 
@@ -85,6 +90,72 @@ public sealed class MonorepoTemplate : IScaffoldTemplate
                     .SetConfiguration(Configuration)
                     .SetOutputDirectory(NupkgOut)
                     .SetNoBuild(true)));
+
+            // CI entry point — no .Default() set, so `tamp` with no args picks
+            // the `Ci`-named target by convention. CI runners invoke `tamp Ci`
+            // explicitly; this gives both the same behavior.
+            Target Ci => _ => _
+                .DependsOn(Compile, Test, Pack);
+        }
+
+        """;
+
+    private static string RenderBuildCsInitStyle() => """
+        using Tamp;
+        using Tamp.NetCli.V10;
+
+        class Build : TampBuild
+        {
+            public static int Main(string[] args) => Execute<Build>(args);
+
+            [Parameter("Build configuration")]
+            Configuration Configuration = IsLocalBuild ? Configuration.Debug : Configuration.Release;
+
+            [Solution] readonly Solution Solution = null!;
+
+            AbsolutePath Artifacts => RootDirectory / "artifacts";
+            AbsolutePath NupkgOut => Artifacts / "nupkg";
+
+            Target Clean => _ => _.Executes(() => CleanArtifacts());
+
+            Target Restore => _ => _
+                .Internal()
+                .Executes(() => DotNet.Restore(new DotNetRestoreSettings
+                {
+                    Project = Solution.Path,
+                }));
+
+            Target Compile => _ => _
+                .DependsOn(Restore)
+                .Executes(() => DotNet.Build(new DotNetBuildSettings
+                {
+                    Project = Solution.Path,
+                    Configuration = Configuration,
+                    NoRestore = true,
+                }));
+
+            // Fan-out: every *.Tests.csproj in the solution gets its own
+            // dotnet test invocation. A single project's failure surfaces in
+            // the per-target output instead of being buried in a giant log.
+            Target Test => _ => _
+                .DependsOn(Compile)
+                .Executes(() => Solution.GlobFiles("**/*.Tests.csproj")
+                    .Select(testProject => DotNet.Test(new DotNetTestSettings
+                    {
+                        Project = testProject,
+                        Configuration = Configuration,
+                        NoBuild = true,
+                    })));
+
+            Target Pack => _ => _
+                .DependsOn(Compile)
+                .Executes(() => DotNet.Pack(new DotNetPackSettings
+                {
+                    Project = Solution.Path,
+                    Configuration = Configuration,
+                    OutputDirectory = NupkgOut,
+                    NoBuild = true,
+                }));
 
             // CI entry point — no .Default() set, so `tamp` with no args picks
             // the `Ci`-named target by convention. CI runners invoke `tamp Ci`

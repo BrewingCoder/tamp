@@ -247,6 +247,102 @@ public sealed class InitCommandTests : IDisposable
     }
 
     [Fact]
+    public void Default_Settings_Style_Is_Fluent()
+    {
+        var exit = Run();
+        Assert.Equal(InitCommand.ExitOk, exit);
+        var buildCs = File.ReadAllText(Path.Combine(_root, "build", "Build.cs"));
+
+        // Fluent shape: lambda `s => s.SetXxx(...)` chains, no `new DotNetBuildSettings`.
+        Assert.Contains(".SetProject(Solution.Path)", buildCs);
+        Assert.Contains(".SetConfiguration(Configuration)", buildCs);
+        Assert.DoesNotContain("new DotNetBuildSettings", buildCs);
+        Assert.DoesNotContain("new DotNetRestoreSettings", buildCs);
+        Assert.DoesNotContain("new DotNetTestSettings", buildCs);
+    }
+
+    [Theory]
+    [InlineData("minimal")]
+    [InlineData("library")]
+    [InlineData("monorepo")]
+    public void Settings_Style_Init_Switches_Templates_To_Object_Initializer_Shape(string template)
+    {
+        var exit = InitCommand.Run(
+            new[] { "--template", template, "--settings-style", "init", _root },
+            _stdout, _stderr);
+        Assert.Equal(InitCommand.ExitOk, exit);
+        var buildCs = File.ReadAllText(Path.Combine(_root, "build", "Build.cs"));
+
+        // Object-init shape: explicit `new XxxSettings { Project = ..., ... }`.
+        Assert.Contains("new DotNetRestoreSettings", buildCs);
+        Assert.Contains("new DotNetBuildSettings", buildCs);
+        Assert.Contains("new DotNetTestSettings", buildCs);
+        Assert.Contains("Project = Solution.Path,", buildCs);
+        // Fluent setters should NOT appear on the wrapper calls.
+        Assert.DoesNotContain(".SetProject(Solution.Path)", buildCs);
+        Assert.DoesNotContain(".SetConfiguration(Configuration)", buildCs);
+    }
+
+    [Theory]
+    [InlineData("Fluent", "fluent")]
+    [InlineData("fluent", "fluent")]
+    [InlineData("FLUENT", "fluent")]
+    [InlineData("Init",   "init")]
+    [InlineData("init",   "init")]
+    [InlineData("INIT",   "init")]
+    public void Settings_Style_Value_Is_Case_Insensitive(string supplied, string expected)
+    {
+        var exit = InitCommand.Run(
+            new[] { "--settings-style", supplied, _root },
+            _stdout, _stderr);
+        Assert.Equal(InitCommand.ExitOk, exit);
+
+        var buildCs = File.ReadAllText(Path.Combine(_root, "build", "Build.cs"));
+        if (expected == "init")
+            Assert.Contains("new DotNetBuildSettings", buildCs);
+        else
+            Assert.Contains(".SetProject(Solution.Path)", buildCs);
+    }
+
+    [Fact]
+    public void Settings_Style_Flag_Without_Value_Errors_With_Usage()
+    {
+        var exit = InitCommand.Run(new[] { "--settings-style" }, _stdout, _stderr);
+        Assert.Equal(InitCommand.ExitUsage, exit);
+        Assert.Contains("--settings-style requires a value", _stderr.ToString());
+    }
+
+    [Fact]
+    public void Settings_Style_Rejects_Unknown_Value()
+    {
+        var exit = InitCommand.Run(new[] { "--settings-style", "wat", _root }, _stdout, _stderr);
+        Assert.Equal(InitCommand.ExitUsage, exit);
+        Assert.Contains("--settings-style: unknown value 'wat'", _stderr.ToString());
+    }
+
+    [Fact]
+    public void Pack_Target_In_Library_Template_Uses_Init_Style_When_Requested()
+    {
+        var exit = InitCommand.Run(
+            new[] { "--template", "library", "--settings-style", "init", _root },
+            _stdout, _stderr);
+        Assert.Equal(InitCommand.ExitOk, exit);
+        var buildCs = File.ReadAllText(Path.Combine(_root, "build", "Build.cs"));
+        Assert.Contains("new DotNetPackSettings", buildCs);
+        Assert.Contains("OutputDirectory = NupkgOut,", buildCs);
+    }
+
+    [Fact]
+    public void Help_Mentions_Settings_Style_Flag()
+    {
+        var exit = InitCommand.Run(new[] { "--help" }, _stdout, _stderr);
+        Assert.Equal(InitCommand.ExitOk, exit);
+        var help = _stdout.ToString();
+        Assert.Contains("--settings-style", help);
+        Assert.Contains("fluent | init", help);
+    }
+
+    [Fact]
     public void Unknown_Flag_Exits_Usage_With_Help()
     {
         var exit = InitCommand.Run(["--made-up-flag", _root], _stdout, _stderr);

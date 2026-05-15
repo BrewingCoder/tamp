@@ -29,7 +29,13 @@ public sealed class MinimalTemplate : IScaffoldTemplate
         // un-pathed — Tamp.Core's auto-discovery resolves it. If the probe found
         // zero/multi-solution layouts, same thing: the generated template doesn't
         // try to be clever; auto-discovery either works or the user adds the path.
-        return """
+        return ctx.SettingsStyle == SettingsStyle.Init
+            ? RenderBuildCsInitStyle()
+            : RenderBuildCsFluentStyle();
+    }
+
+    private static string RenderBuildCsFluentStyle()
+        => """
         using Tamp;
         using Tamp.NetCli.V10;
 
@@ -70,7 +76,56 @@ public sealed class MinimalTemplate : IScaffoldTemplate
         }
 
         """;
-    }
+
+    private static string RenderBuildCsInitStyle()
+        => """
+        using Tamp;
+        using Tamp.NetCli.V10;
+
+        class Build : TampBuild
+        {
+            public static int Main(string[] args) => Execute<Build>(args);
+
+            [Parameter("Build configuration")]
+            Configuration Configuration = IsLocalBuild ? Configuration.Debug : Configuration.Release;
+
+            [Solution] readonly Solution Solution = null!;
+
+            AbsolutePath Artifacts => RootDirectory / "artifacts";
+
+            Target Clean => _ => _.Executes(() => CleanArtifacts());
+
+            Target Restore => _ => _
+                .Internal()
+                .Executes(() => DotNet.Restore(new DotNetRestoreSettings
+                {
+                    Project = Solution.Path,
+                }));
+
+            Target Compile => _ => _
+                .DependsOn(Restore)
+                .Executes(() => DotNet.Build(new DotNetBuildSettings
+                {
+                    Project = Solution.Path,
+                    Configuration = Configuration,
+                    NoRestore = true,
+                }));
+
+            Target Test => _ => _
+                .DependsOn(Compile)
+                .Executes(() => DotNet.Test(new DotNetTestSettings
+                {
+                    Project = Solution.Path,
+                    Configuration = Configuration,
+                    NoBuild = true,
+                }));
+
+            Target Default => _ => _
+                .Default()
+                .DependsOn(Compile);
+        }
+
+        """;
 
     internal static string RenderBuildCsproj(ScaffoldContext ctx)
         => $$"""

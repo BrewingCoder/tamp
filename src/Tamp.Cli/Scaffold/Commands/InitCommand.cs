@@ -76,6 +76,7 @@ public static class InitCommand
         };
         ctxBuilder.DotnetToolsJsonExists = File.Exists(Path.Combine(repoRoot.Value, ".config", "dotnet-tools.json"));
         ctxBuilder.BuildCsAlreadyPresent = File.Exists(Path.Combine(repoRoot.Value, "build", "Build.cs"));
+        ctxBuilder.SettingsStyle = opts.SettingsStyle;
         if (opts.SolutionOverride is not null) ctxBuilder.Solution = opts.SolutionOverride;
         else foreach (var p in probes) p.Probe(repoRoot, ctxBuilder);
         var ctx = ctxBuilder.Build();
@@ -197,6 +198,17 @@ public static class InitCommand
                     if (++i >= args.Length) { error = "--template requires a name (minimal, library, monorepo)."; return opts; }
                     opts.TemplateName = args[i];
                     break;
+                case "--settings-style":
+                    if (++i >= args.Length) { error = "--settings-style requires a value (fluent | init)."; return opts; }
+                    switch (args[i].ToLowerInvariant())
+                    {
+                        case "fluent": opts.SettingsStyle = SettingsStyle.Fluent; break;
+                        case "init":   opts.SettingsStyle = SettingsStyle.Init;   break;
+                        default:
+                            error = $"--settings-style: unknown value '{args[i]}' (expected 'fluent' or 'init').";
+                            return opts;
+                    }
+                    break;
                 case "--template-source":
                     opts.UnsupportedFlag = (a, "0.3.0"); if (++i < args.Length) { /* consume value */ }
                     break;
@@ -278,12 +290,15 @@ public static class InitCommand
         w.WriteLine("  tamp.sh + tamp.cmd           shims that `dotnet tool restore` on first run");
         w.WriteLine();
         w.WriteLine("FLAGS:");
-        w.WriteLine("  --template <name>     Pick a non-minimal template (minimal | library | monorepo)");
-        w.WriteLine("  --solution <path>     Explicit .NET solution path (otherwise auto-detected)");
-        w.WriteLine("  --dry-run             Print would-write list; touch nothing");
-        w.WriteLine("  --force               Overwrite existing files");
-        w.WriteLine("  --list-templates      List templates from all registered sources");
-        w.WriteLine("  -h | --help           This message");
+        w.WriteLine("  --template <name>          Pick a non-minimal template (minimal | library | monorepo)");
+        w.WriteLine("  --settings-style <style>   Wrapper settings shape in scaffolded Build.cs (fluent | init).");
+        w.WriteLine("                              fluent (default) → DotNet.Build(s => s.SetProject(...))");
+        w.WriteLine("                              init             → DotNet.Build(new() { Project = ... })");
+        w.WriteLine("  --solution <path>          Explicit .NET solution path (otherwise auto-detected)");
+        w.WriteLine("  --dry-run                  Print would-write list; touch nothing");
+        w.WriteLine("  --force                    Overwrite existing files");
+        w.WriteLine("  --list-templates           List templates from all registered sources");
+        w.WriteLine("  -h | --help                This message");
         w.WriteLine();
         w.WriteLine("RESERVED (parsed; not implemented):");
         w.WriteLine("  --template-source <pkg>    (0.3.0)  Pin a specific NuGet template package");
@@ -302,6 +317,7 @@ public static class InitCommand
         public string? WorkingDirectory;
         public string? TemplateName;
         public AbsolutePath? SolutionOverride;
+        public SettingsStyle SettingsStyle = SettingsStyle.Fluent;
         public (string Flag, string Version)? UnsupportedFlag;
     }
 }

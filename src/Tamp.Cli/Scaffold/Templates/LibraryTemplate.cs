@@ -30,7 +30,12 @@ public sealed class LibraryTemplate : IScaffoldTemplate
         yield return new FileSpec(ctx.RepoRoot / "tamp.cmd", MinimalTemplate.RenderTampCmd(), WriteMode.SkipIfExists);
     }
 
-    internal static string RenderBuildCs(ScaffoldContext ctx) => """
+    internal static string RenderBuildCs(ScaffoldContext ctx)
+        => ctx.SettingsStyle == SettingsStyle.Init
+            ? RenderBuildCsInitStyle()
+            : RenderBuildCsFluentStyle();
+
+    private static string RenderBuildCsFluentStyle() => """
         using Tamp;
         using Tamp.NetCli.V10;
 
@@ -73,6 +78,66 @@ public sealed class LibraryTemplate : IScaffoldTemplate
                     .SetConfiguration(Configuration)
                     .SetOutputDirectory(NupkgOut)
                     .SetNoBuild(true)));
+
+            Target Default => _ => _
+                .Default()
+                .DependsOn(Pack);
+        }
+
+        """;
+
+    private static string RenderBuildCsInitStyle() => """
+        using Tamp;
+        using Tamp.NetCli.V10;
+
+        class Build : TampBuild
+        {
+            public static int Main(string[] args) => Execute<Build>(args);
+
+            [Parameter("Build configuration")]
+            Configuration Configuration = IsLocalBuild ? Configuration.Debug : Configuration.Release;
+
+            [Solution] readonly Solution Solution = null!;
+
+            AbsolutePath Artifacts => RootDirectory / "artifacts";
+            AbsolutePath NupkgOut => Artifacts / "nupkg";
+
+            Target Clean => _ => _.Executes(() => CleanArtifacts());
+
+            Target Restore => _ => _
+                .Internal()
+                .Executes(() => DotNet.Restore(new DotNetRestoreSettings
+                {
+                    Project = Solution.Path,
+                }));
+
+            Target Compile => _ => _
+                .DependsOn(Restore)
+                .Executes(() => DotNet.Build(new DotNetBuildSettings
+                {
+                    Project = Solution.Path,
+                    Configuration = Configuration,
+                    NoRestore = true,
+                }));
+
+            Target Test => _ => _
+                .DependsOn(Compile)
+                .Executes(() => DotNet.Test(new DotNetTestSettings
+                {
+                    Project = Solution.Path,
+                    Configuration = Configuration,
+                    NoBuild = true,
+                }));
+
+            Target Pack => _ => _
+                .DependsOn(Compile)
+                .Executes(() => DotNet.Pack(new DotNetPackSettings
+                {
+                    Project = Solution.Path,
+                    Configuration = Configuration,
+                    OutputDirectory = NupkgOut,
+                    NoBuild = true,
+                }));
 
             Target Default => _ => _
                 .Default()
