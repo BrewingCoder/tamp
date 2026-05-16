@@ -8,6 +8,19 @@ Pre-1.0 versions may break public API freely between minor versions; the `0.x` l
 
 ## [Unreleased]
 
+## [1.10.0] — pending — adopter `IBuildReporter` plug-in via `[BuildReporter]` + per-target output-tail capture (TAM-230 foundation)
+
+### Added
+
+- **`[BuildReporter]` attribute** — marks `IBuildReporter`-typed fields/properties on a `TampBuild` for inclusion in the build's event-sink fan-out. The framework collects every marked member after parameter binding, composes them with the CLI-selected default reporter (Noop / Json), and dispatches every executor event to all of them via the new `CompositeBuildReporter`. Adopter satellites (Tamp.Telegram, Tamp.Slack, Tamp.Discord, custom) now plug into the build lifecycle without a Tamp.Core fork or a global static. Null-valued members are silently skipped so "only when configured" reporters work naturally.
+- **`CompositeBuildReporter`** — fans events to N inner reporters in registration order; isolates failures so a misbehaving reporter doesn't starve the rest (the offending reporter's type name is written to `Console.Error`).
+- **`TargetFailureDetail` record** — replaces the positional `(string name, TimeSpan duration, string failureReason)` parameter triple on `IBuildReporter.OnTargetFailed`. Carries the same three fields plus a new `OutputTail` capturing the last N lines (default 50) of the failing target's merged stdout+stderr. Wrapping the contract in a record makes future failure-context additions purely additive.
+- **`TargetOutputBuffer` + `CapturingTextWriter`** (internal) — per-target ring buffer + `TextWriter` wrapper. The Executor instantiates one per target around its `CommandPlan` execution loop, so the failure payload's `OutputTail` is populated automatically for every failure path (exit-nonzero, action threw, requires-failed). 16 new tests across `CompositeBuildReporterTests`, `TargetOutputBufferTests`, `CollectBuildReportersTests`.
+
+### Changed
+
+- **`IBuildReporter.OnTargetFailed` signature** — was `(string name, TimeSpan duration, string failureReason)`; now `(TargetFailureDetail detail)`. Breaking change for implementers (signature) but additive in spirit (every field that was passed before is still on the record, plus the new `OutputTail`). The two in-tree implementers (`NoopBuildReporter`, `JsonBuildReporter`) are updated; the NDJSON event shape on the wire gains an `output_tail` field for failure events.
+
 ## [1.9.0] — 2026-05-13 — `--skip` / `--skip-deps` CLI flags + reflection-bound field warning suppressor + structured `--format=json` + NDJSON `--reporter=json`
 
 ### Added — `--list --format=json` (TAM-139)

@@ -26,8 +26,15 @@ public interface IBuildReporter
     /// <summary>Called when a target completed successfully.</summary>
     void OnTargetSucceeded(string name, TimeSpan duration);
 
-    /// <summary>Called when a target failed (Executes threw, or the wrapped CommandPlan exited non-zero).</summary>
-    void OnTargetFailed(string name, TimeSpan duration, string failureReason);
+    /// <summary>
+    /// Called when a target failed — Executes threw, the wrapped CommandPlan
+    /// exited non-zero, or a Requires precondition was unmet. The
+    /// <see cref="TargetFailureDetail.OutputTail"/> on the payload carries
+    /// the last N lines of merged stdout+stderr the target emitted before
+    /// failing (TAM-230 background — adopter notify reporters use this for
+    /// rich failure messages without parsing terminal output themselves).
+    /// </summary>
+    void OnTargetFailed(TargetFailureDetail detail);
 
     /// <summary>Called when a target was skipped (user --skip / OnlyWhen / Requires-failed / upstream-failure).</summary>
     void OnTargetSkipped(string name, string reason);
@@ -46,7 +53,7 @@ public sealed class NoopBuildReporter : IBuildReporter
     public void OnBuildStart(string buildId, IReadOnlyList<string> requestedTargets, IReadOnlyList<string> executionClosure) { }
     public void OnTargetStart(string name) { }
     public void OnTargetSucceeded(string name, TimeSpan duration) { }
-    public void OnTargetFailed(string name, TimeSpan duration, string failureReason) { }
+    public void OnTargetFailed(TargetFailureDetail detail) { }
     public void OnTargetSkipped(string name, string reason) { }
     public void OnTargetNotRun(string name, string reason) { }
     public void OnBuildEnd(string status, string? firstFailedTarget, int exitCode, TimeSpan totalDuration) { }
@@ -120,14 +127,15 @@ public sealed class JsonBuildReporter : IBuildReporter
             ended_at = NowIso(),
         });
 
-    public void OnTargetFailed(string name, TimeSpan duration, string failureReason)
+    public void OnTargetFailed(TargetFailureDetail detail)
         => Emit(new
         {
             @event = "target.end",
-            name,
+            name = detail.TargetName,
             status = "failed",
-            duration_ms = (long)duration.TotalMilliseconds,
-            failure_reason = failureReason,
+            duration_ms = (long)detail.Duration.TotalMilliseconds,
+            failure_reason = detail.FailureReason,
+            output_tail = detail.OutputTail,
             ended_at = NowIso(),
         });
 

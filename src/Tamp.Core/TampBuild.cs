@@ -478,16 +478,25 @@ public abstract partial class TampBuild
                 solutionPath,
                 RootDirectory.Value);
 
-            // TAM-140: build the reporter from the parsed flag. In JSON mode,
-            // the JsonBuildReporter takes Console.Out for NDJSON emit and the
-            // Executor's Logger is routed to TextWriter.Null so framework
-            // decorations don't pollute the structured stream.
-            IBuildReporter reporter = reporterKind switch
+            // TAM-140: build the CLI-selected default reporter. In JSON mode the
+            // JsonBuildReporter takes Console.Out for NDJSON emit and the Logger
+            // is routed to TextWriter.Null so framework decorations don't
+            // pollute the structured stream.
+            IBuildReporter defaultReporter = reporterKind switch
             {
                 ReporterKind.Json => new JsonBuildReporter(Console.Out),
                 _ => NoopBuildReporter.Instance,
             };
             TextWriter? logOutput = reporterKind == ReporterKind.Json ? TextWriter.Null : null;
+
+            // TAM-230: collect any [BuildReporter]-marked fields the build script
+            // declared (Telegram, Slack, custom, …) and compose them with the
+            // default. The single-reporter fast path stays unchanged when no
+            // adopter reporters are registered.
+            var adopterReporters = CollectBuildReporters(build);
+            IBuildReporter reporter = adopterReporters.Count == 0
+                ? defaultReporter
+                : new CompositeBuildReporter(new[] { defaultReporter }.Concat(adopterReporters).ToArray());
 
             var executor = new Executor(
                 graph, mode, output: logOutput, verbosity, projectInfo,
@@ -735,5 +744,41 @@ public abstract partial class TampBuild
         }
 
         return result;
+    }
+
+    /// <summary>
+    /// Walk the build's fields and properties for <see cref="BuildReporterAttribute"/>
+    /// markers; return the non-null <see cref="IBuildReporter"/>-typed values for
+    /// fan-out via <see cref="CompositeBuildReporter"/> (TAM-230). Null members
+    /// are silently skipped — adopters often guard their reporter construction on
+    /// "is the env var set?" and a null result means "this reporter is intentionally
+    /// not configured for this build".
+    /// </summary>
+    internal static IReadOnlyList<IBuildReporter> CollectBuildReporters(TampBuild build)
+    {
+        const BindingFlags flags = BindingFlags.Instance | BindingFlags.Public | BindingFlags.NonPublic;
+        var type = build.GetType();
+        var collected = new List<IBuildReporter>();
+
+        foreach (var f in type.GetFields(flags))
+        {
+            if (f.GetCustomAttribute<BuildReporterAttribute>(inherit: true) is null) continue;
+            if (!typeof(IBuildReporter).IsAssignableFrom(f.FieldType))
+                throw new InvalidOperationException(
+                    $"[BuildReporter] on field '{type.Name}.{f.Name}' requires an IBuildReporter-typed field; got {f.FieldType.Name}.");
+            if (f.GetValue(build) is IBuildReporter r) collected.Add(r);
+        }
+
+        foreach (var p in type.GetProperties(flags))
+        {
+            if (p.GetCustomAttribute<BuildReporterAttribute>(inherit: true) is null) continue;
+            if (!typeof(IBuildReporter).IsAssignableFrom(p.PropertyType))
+                throw new InvalidOperationException(
+                    $"[BuildReporter] on property '{type.Name}.{p.Name}' requires an IBuildReporter-typed property; got {p.PropertyType.Name}.");
+            if (p.GetIndexParameters().Length > 0) continue;
+            if (p.GetValue(build) is IBuildReporter r) collected.Add(r);
+        }
+
+        return collected;
     }
 }

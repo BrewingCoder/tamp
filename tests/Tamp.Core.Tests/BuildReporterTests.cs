@@ -251,7 +251,12 @@ public sealed class BuildReporterTests
         r.OnBuildStart("id", new[] { "A" }, new[] { "A" });
         r.OnTargetStart("A");
         r.OnTargetSucceeded("A", TimeSpan.FromSeconds(1));
-        r.OnTargetFailed("A", TimeSpan.FromSeconds(1), "x");
+        r.OnTargetFailed(new TargetFailureDetail
+        {
+            TargetName = "A",
+            Duration = TimeSpan.FromSeconds(1),
+            FailureReason = "x",
+        });
         r.OnTargetSkipped("A", "reason");
         r.OnTargetNotRun("A", "reason");
         r.OnBuildEnd("succeeded", null, 0, TimeSpan.FromSeconds(2));

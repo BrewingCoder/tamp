@@ -278,7 +278,12 @@ public sealed class Executor
             if (CheckRequirementsFailed(spec) is { } reqFail)
             {
                 _log.WriteRaw($"==> {spec.Name} REQUIRES failed: {reqFail}");
-                Reporter.OnTargetFailed(spec.Name, TimeSpan.Zero, $"Requires failed: {reqFail}");
+                Reporter.OnTargetFailed(new TargetFailureDetail
+                {
+                    TargetName = spec.Name,
+                    Duration = TimeSpan.Zero,
+                    FailureReason = $"Requires failed: {reqFail}",
+                });
                 records.Add(TargetExecutionRecord.Failed(spec.Name, TimeSpan.Zero, $"Requires failed: {reqFail}"));
                 if (!buildFailedAt.HasValue)
                 {
@@ -302,6 +307,14 @@ public sealed class Executor
             catch { workingSetAtStart = 0; cpuAtStart = TimeSpan.Zero; }
             var actionsCount = spec.Actions.Count;
             var commandsForThisTarget = 0;
+
+            // Per-target output ring buffer (TAM-230 — reporters surface failure context).
+            // Wrap _redactedOutput with a CapturingTextWriter so every line the target's
+            // CommandPlans emit lands in the buffer; on failure we drain the tail into
+            // the TargetFailureDetail. Inline writes via _log.WriteRaw bypass this
+            // (they're framework prose, not target output).
+            var outputBuffer = new TargetOutputBuffer();
+            var capturingOutput = new CapturingTextWriter(_redactedOutput, outputBuffer);
 
             // ── Diagnostics: per-target span (ADR 0018). Tags are populated at known points;
             // status is set on the activity at end of try/catch.
@@ -345,13 +358,20 @@ public sealed class Executor
                         _redactionTable.RegisterAll(plan);
                         commandsForThisTarget++;
                         commandsDispatchedCount++;
-                        exit = ProcessRunner.Execute(plan, _redactedOutput, _redactedOutput, sourceTargetName: spec.Name);
+                        exit = ProcessRunner.Execute(plan, capturingOutput, capturingOutput, sourceTargetName: spec.Name);
                         if (exit != 0)
                         {
                             _log.WriteRaw($"==> {spec.Name} FAILED (exit {exit})");
                             if (spec.FailureMode == FailureMode.Continue) continue;
                             sw.Stop();
-                            Reporter.OnTargetFailed(spec.Name, sw.Elapsed, $"exit {exit}");
+                            capturingOutput.FlushPendingLine();
+                            Reporter.OnTargetFailed(new TargetFailureDetail
+                            {
+                                TargetName = spec.Name,
+                                Duration = sw.Elapsed,
+                                FailureReason = $"exit {exit}",
+                                OutputTail = outputBuffer.Drain(),
+                            });
                             records.Add(TargetExecutionRecord.Failed(spec.Name, sw.Elapsed, $"exit {exit}"));
                                         EmitTargetTerminal(targetSpan, spec, sw.Elapsed, swStartTicks, allocAtStart, workingSetAtStart, gen0AtStart, gen1AtStart, gen2AtStart, cpuAtStart, commandsForThisTarget, TampDiagnostics.Tags.OutcomeFailure, $"exit {exit}");
                             if (!buildFailedAt.HasValue)
@@ -381,7 +401,14 @@ public sealed class Executor
             {
                 sw.Stop();
                 _log.WriteRaw($"==> {spec.Name} threw {ex.GetType().Name}: {ex.Message}");
-                Reporter.OnTargetFailed(spec.Name, sw.Elapsed, $"{ex.GetType().Name}: {ex.Message}");
+                capturingOutput.FlushPendingLine();
+                Reporter.OnTargetFailed(new TargetFailureDetail
+                {
+                    TargetName = spec.Name,
+                    Duration = sw.Elapsed,
+                    FailureReason = $"{ex.GetType().Name}: {ex.Message}",
+                    OutputTail = outputBuffer.Drain(),
+                });
                 records.Add(TargetExecutionRecord.Failed(spec.Name, sw.Elapsed, ex.Message));
                 EmitTargetTerminal(targetSpan, spec, sw.Elapsed, swStartTicks, allocAtStart, workingSetAtStart, gen0AtStart, gen1AtStart, gen2AtStart, cpuAtStart, commandsForThisTarget, TampDiagnostics.Tags.OutcomeFailure, $"{ex.GetType().Name}: {ex.Message}");
                 if (!buildFailedAt.HasValue)
