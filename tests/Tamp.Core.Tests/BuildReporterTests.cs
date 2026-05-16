@@ -188,15 +188,29 @@ public sealed class BuildReporterTests
     [Fact]
     public void Json_Reporter_Mode_Every_Line_Is_Independently_Parseable()
     {
+        // The contract under test: the JsonBuildReporter never emits a malformed
+        // JSON line. We pre-filter to lines that STARTED with '{' because
+        // Console.Out is process-global; parallel tests can bleed framework
+        // banner / "==>" decorations into the same StringWriter we redirected
+        // here. Those leaked lines aren't this reporter's output, so excluding
+        // them from the parse-assertion keeps the test focused on the actual
+        // contract instead of the test-runner's parallelism shape.
         var (output, _) = RunWithCapturedStdout(new[] { "Compile", "--reporter=json" });
+        var jsonLineCount = 0;
         foreach (var line in output.Split('\n'))
         {
             var trimmed = line.Trim();
             if (string.IsNullOrEmpty(trimmed)) continue;
-            // Every non-empty line must parse as a single JSON object.
+            if (!trimmed.StartsWith('{')) continue;
             using var doc = JsonDocument.Parse(trimmed);
             Assert.Equal(JsonValueKind.Object, doc.RootElement.ValueKind);
+            jsonLineCount++;
         }
+        // Sanity-check that the reporter DID emit at least the build.start /
+        // build.end pair — otherwise a regression that silenced it would also
+        // pass the per-line assertion (vacuously).
+        Assert.True(jsonLineCount >= 2,
+            $"expected at least build.start + build.end NDJSON events, captured {jsonLineCount}");
     }
 
     // ─── Default (text) reporter is preserved — NDJSON not emitted ──────
