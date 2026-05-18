@@ -4,6 +4,7 @@ using Tamp.NetCli.V10;
 using Tamp.SonarScanner.V10;
 using Tamp.CycloneDx.V6;
 using Tamp.OpenGrep.V1;
+using Tamp.OsvScanner.V2;
 using Tamp.Sbom;
 using Tamp.Sarif;
 using Tamp.DependencyTrack.V1;
@@ -45,11 +46,14 @@ class Build : TampBuild
     AbsolutePath Artifacts => RootDirectory / "artifacts";
     AbsolutePath CoverageDir => Artifacts / "coverage";
     AbsolutePath SecurityDir => Artifacts / "security";
-    AbsolutePath SbomFile => SecurityDir / "tamp-bom.json";
+    // CycloneDX canonical filename pattern (*.cdx.json). osv-scanner 2.x
+    // refuses to extract from non-canonical names like "tamp-bom.json".
+    AbsolutePath SbomFile => SecurityDir / "tamp.cdx.json";
     AbsolutePath SarifOpenGrepFile => SecurityDir / "tamp-opengrep.sarif";
     AbsolutePath SarifRoslynDir => SecurityDir / "roslyn";
     AbsolutePath SarifRoslynFile => SecurityDir / "tamp-roslyn.sarif";
     AbsolutePath SarifSastFile => SecurityDir / "tamp-sast.sarif";
+    AbsolutePath SarifCveFile => SecurityDir / "tamp-cve.sarif";
 
     // ----- Wave 1 security chain env-var inputs (TAM-243 / TAM-245). All
     //       OPTIONAL: when unset, the SecurityPush target no-ops cleanly so
@@ -212,7 +216,7 @@ class Build : TampBuild
     // in the lab.
 
     Target Sbom => _ => _
-        .Description("Generate a CycloneDX SBOM for the Tamp solution via dotnet-CycloneDX 6.x. Output: artifacts/security/tamp-bom.json.")
+        .Description("Generate a CycloneDX SBOM for the Tamp solution via dotnet-CycloneDX 6.x. Output: artifacts/security/tamp.cdx.json. Pinned to spec version 1.6 (osv-scanner 2.3.8 doesn't yet accept 1.7) and the canonical *.cdx.json filename osv-scanner's extractor requires.")
         .DependsOn(nameof(Restore))
         .Executes(() =>
         {
@@ -220,8 +224,9 @@ class Build : TampBuild
             return CycloneDx.Generate(s => s
                 .SetPath(Solution.Path)
                 .SetOutputDirectory(SecurityDir)
-                .SetFilename("tamp-bom.json")
+                .SetFilename("tamp.cdx.json")
                 .SetFormat(CycloneDxFormat.Json)
+                .SetSpecVersion("1.6")
                 .SetRecursive(true)
                 .SetExcludeTestProjects(true)
                 .SetMetadataComponentName("Tamp")
@@ -299,9 +304,23 @@ class Build : TampBuild
             Console.WriteLine($"[security] Merged {logs.Count} SARIF source(s) → {SarifSastFile.Value} ({merged.Runs.Count} runs, {totalResults} distinct findings)");
         });
 
+    Target SecurityScanCveSbom => _ => _
+        .Description("Cross-ecosystem SCA: osv-scanner reads the CycloneDX BOM and queries OSV.dev (npm/PyPI/Cargo/Go/Maven/NuGet/Packagist/Pub). Output: artifacts/security/tamp-cve.sarif. Kept separate from tamp-sast.sarif so DefectDojo can route SAST and SCA findings to different triage queues.")
+        .DependsOn(nameof(Sbom))
+        .Executes(() =>
+        {
+            SecurityDir.CreateDirectory();
+            return OsvScanner.ScanSource(s => s
+                .SetSbomFile(SbomFile)
+                .SetOutputFile(SarifCveFile)
+                .SetFormat(OsvScannerFormat.Sarif)
+                .SetAllowNoLockfiles(true)
+                .SetWorkingDirectory(RootDirectory));
+        });
+
     Target SecurityPush => _ => _
-        .Description("Push the SBOM to Dependency-Track and the merged SAST SARIF + FPF to DefectDojo. Opt-in via TAMP_DT_URL / TAMP_DD_URL env vars; no-op when unset so producer-only builds stay green.")
-        .DependsOn(nameof(Sbom), nameof(SecurityScan))
+        .Description("Push the SBOM to Dependency-Track and the merged SAST SARIF + CVE SARIF + DT FPF to DefectDojo. Opt-in via TAMP_DT_URL / TAMP_DD_URL env vars; no-op when unset so producer-only builds stay green.")
+        .DependsOn(nameof(Sbom), nameof(SecurityScan), nameof(SecurityScanCveSbom))
         .Executes(async () =>
         {
             string? exportedFpf = null;
@@ -348,7 +367,14 @@ class Build : TampBuild
                 {
                     var sarifLog = SarifReader.LoadFromFile(SarifSastFile);
                     var sarifResult = await dd.ReimportSarifAsync(engagementId, sarifLog);
-                    Console.WriteLine($"[security] DD SARIF reimport → test {sarifResult.TestId}");
+                    Console.WriteLine($"[security] DD SAST SARIF reimport → test {sarifResult.TestId}");
+                }
+
+                if (File.Exists(SarifCveFile))
+                {
+                    var cveLog = SarifReader.LoadFromFile(SarifCveFile);
+                    var cveResult = await dd.ReimportSarifAsync(engagementId, cveLog);
+                    Console.WriteLine($"[security] DD CVE SARIF reimport → test {cveResult.TestId}");
                 }
 
                 if (exportedFpf is not null)
@@ -364,8 +390,8 @@ class Build : TampBuild
         });
 
     Target Security => _ => _
-        .Description("End-to-end Wave 1 chain: Sbom + SecurityScan (OpenGrep + Roslyn merge) + (gated) SecurityPush. Run locally as `tamp Security`.")
-        .DependsOn(nameof(Sbom), nameof(SecurityScan), nameof(SecurityPush));
+        .Description("End-to-end Wave 1+2 chain: Sbom + SecurityScan (SAST: OpenGrep + Roslyn merge) + SecurityScanCveSbom (SCA: osv-scanner) + (gated) SecurityPush. Run locally as `tamp Security`.")
+        .DependsOn(nameof(Sbom), nameof(SecurityScan), nameof(SecurityScanCveSbom), nameof(SecurityPush));
 
     Target Default => _ => _
         .DependsOn(nameof(Compile))

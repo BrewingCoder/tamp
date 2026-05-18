@@ -19,6 +19,7 @@ satellites below. Tamp itself dogfoods the chain — see
 | [`Tamp.CycloneDx.V6`](../src/Tamp.CycloneDx.V6) | SBOM producer | CommandPlan wrapping `dotnet-CycloneDX 6.x`; emits a CycloneDX JSON BOM |
 | [`Tamp.OpenGrep.V1`](../src/Tamp.OpenGrep.V1) | SAST producer (pattern) | CommandPlan wrapping `opengrep 1.x`; emits SARIF findings |
 | Roslyn analyzers (built-in path) | SAST producer (semantic) | `SonarAnalyzer.CSharp` + `Roslynator.Analyzers` + `Microsoft.CodeAnalysis.NetAnalyzers` activated via `/p:IncludeSecurityAnalyzers=true`; per-(project, TFM) SARIF via MSBuild's `/p:ErrorLog`. No separate satellite — see TAM-248. |
+| [`Tamp.OsvScanner.V2`](../src/Tamp.OsvScanner.V2) | SCA producer (cross-ecosystem) | CommandPlan wrapping `osv-scanner 2.x`; reads the CycloneDX SBOM and queries OSV.dev (npm / PyPI / Cargo / Go / Maven / NuGet / Packagist / Pub). SARIF output, slots into the chain like the SAST sources but kept as a separate file (tamp-cve.sarif) so DefectDojo can route SAST and SCA to different triage queues. Wave 2 — pulled forward for non-.NET coverage. |
 | [`Tamp.DependencyTrack.V1`](../src/Tamp.DependencyTrack.V1) | SBOM/CVE/VEX hub | REST client for OWASP Dependency-Track v4.x (upload BOM, wait for analysis, export FPF) |
 | [`Tamp.DefectDojo.V2`](../src/Tamp.DefectDojo.V2) | Findings sink | REST client for DefectDojo v2 (import / reimport SARIF or FPF) |
 
