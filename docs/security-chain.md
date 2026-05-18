@@ -1,0 +1,164 @@
+# Tamp Security & Compliance Chain (Wave 1)
+
+The Wave 1 security chain wires six packages into a single end-to-end
+flow: build → SBOM → SAST → Dependency-Track → DefectDojo. Every step
+produces a standards-shaped artifact (CycloneDX or SARIF) that survives
+tool replacement.
+
+The chain is **opt-in**: adopters wire it into their `TampBuild` via the
+satellites below. Tamp itself dogfoods the chain — see
+[`build/Build.cs`](../build/Build.cs) `Sbom` / `SecurityScan` /
+`SecurityPush` / `Security` targets for a reference recipe.
+
+## The packages
+
+| Package | Role | What it emits |
+|---|---|---|
+| [`Tamp.Sarif`](../src/Tamp.Sarif) | Contract package | Typed `SarifLog` record + `IFindingSource` interface (SARIF 2.1.0) |
+| [`Tamp.Sbom`](../src/Tamp.Sbom) | Contract package | Typed `CycloneDxBom` record + `ISbomSource`/`ISbomSink` (CycloneDX 1.6/1.7 with first-class VEX) |
+| [`Tamp.CycloneDx.V6`](../src/Tamp.CycloneDx.V6) | SBOM producer | CommandPlan wrapping `dotnet-CycloneDX 6.x`; emits a CycloneDX JSON BOM |
+| [`Tamp.OpenGrep.V1`](../src/Tamp.OpenGrep.V1) | SAST producer | CommandPlan wrapping `opengrep 1.x`; emits SARIF findings |
+| [`Tamp.DependencyTrack.V1`](../src/Tamp.DependencyTrack.V1) | SBOM/CVE/VEX hub | REST client for OWASP Dependency-Track v4.x (upload BOM, wait for analysis, export FPF) |
+| [`Tamp.DefectDojo.V2`](../src/Tamp.DefectDojo.V2) | Findings sink | REST client for DefectDojo v2 (import / reimport SARIF or FPF) |
+
+Plus one Core addition:
+
+| Helper | Role |
+|---|---|
+| [`Tamp.Polling.Until`](../src/Tamp.Core/Polling.cs) | Generic poll-until-condition helper. First consumer is the DT analysis wait; designed to also fit Azure deployments and NuGet index propagation. |
+
+## End-to-end recipe
+
+This is the canonical flow. The recipe is implemented verbatim in
+Tamp's own `build/Build.cs` — copy-paste, swap the project paths, set
+env vars, done.
+
+```csharp
+using Tamp;
+using Tamp.Sarif;
+using Tamp.Sbom;
+using Tamp.CycloneDx.V6;
+using Tamp.OpenGrep.V1;
+using Tamp.DependencyTrack.V1;
+using Tamp.DefectDojo.V2;
+
+class Build : TampBuild
+{
+    AbsolutePath SecurityDir => RootDirectory / "artifacts" / "security";
+    AbsolutePath SbomFile    => SecurityDir / "bom.json";
+    AbsolutePath SarifFile   => SecurityDir / "scan.sarif";
+
+    [Parameter(EnvironmentVariable = "TAMP_DT_URL")]          readonly string? DtUrl = null;
+    [Secret   (EnvironmentVariable = "TAMP_DT_API_KEY")]      readonly Secret? DtApiKey = null;
+    [Parameter(EnvironmentVariable = "TAMP_DT_PROJECT_UUID")] readonly string? DtProjectUuid = null;
+    [Parameter(EnvironmentVariable = "TAMP_DD_URL")]          readonly string? DdUrl = null;
+    [Secret   (EnvironmentVariable = "TAMP_DD_TOKEN")]        readonly Secret? DdToken = null;
+    [Parameter(EnvironmentVariable = "TAMP_DD_ENGAGEMENT_ID")] readonly int? DdEngagementId = null;
+
+    Target Sbom => _ => _
+        .Executes(() => CycloneDx.Generate(s => s
+            .SetPath(Solution.Path)
+            .SetOutputDirectory(SecurityDir)
+            .SetFilename("bom.json")
+            .SetFormat(CycloneDxFormat.Json)
+            .SetRecursive(true)
+            .SetExcludeTestProjects(true)));
+
+    Target SecurityScan => _ => _
+        .Executes(() => OpenGrep.Scan(s => s
+            .AddTarget("src").AddTarget("tests")
+            .AddConfig("auto")
+            .SetOutputFile(SarifFile)
+            .SetQuiet(true)));
+
+    Target SecurityPush => _ => _
+        .DependsOn(nameof(Sbom), nameof(SecurityScan))
+        .Executes(async () =>
+        {
+            string? fpf = null;
+
+            if (DtUrl is not null && DtApiKey is not null && DtProjectUuid is not null)
+            {
+                using var dt = new DependencyTrackClient(new()
+                {
+                    BaseUrl = new Uri(DtUrl),
+                    ApiKey  = DtApiKey,
+                });
+                var upload  = await dt.UploadBomAsync(Guid.Parse(DtProjectUuid), SbomReader.LoadFromFile(SbomFile));
+                var settled = await dt.WaitForAnalysisCompleteAsync(upload.Token, TimeSpan.FromMinutes(5));
+                if (settled) fpf = await dt.ExportFindingsAsync(Guid.Parse(DtProjectUuid));
+            }
+
+            if (DdUrl is not null && DdToken is not null && DdEngagementId is { } eid)
+            {
+                using var dd = new DefectDojoClient(new() { BaseUrl = new Uri(DdUrl), Token = DdToken });
+                if (File.Exists(SarifFile))
+                    await dd.ReimportSarifAsync(eid, SarifReader.LoadFromFile(SarifFile));
+                if (fpf is not null)
+                    await dd.ReimportScanAsync(DefectDojoScanType.DependencyTrackFpf, eid, fpf);
+            }
+        });
+
+    Target Security => _ => _.DependsOn(nameof(Sbom), nameof(SecurityScan), nameof(SecurityPush));
+}
+```
+
+Run it:
+
+```sh
+# Producer-only (no DT/DD needed; artifacts land in ./artifacts/security/):
+tamp Security
+
+# Full chain (set the env vars then re-run):
+export TAMP_DT_URL=https://dt.example.com
+export TAMP_DT_API_KEY=<key>
+export TAMP_DT_PROJECT_UUID=<uuid>
+export TAMP_DD_URL=https://dd.example.com
+export TAMP_DD_TOKEN=<token>
+export TAMP_DD_ENGAGEMENT_ID=42
+tamp Security
+```
+
+When the DT or DD env vars aren't set, `SecurityPush` logs a clean skip
+and returns success — the producer half stays green even before the
+hubs are reachable.
+
+## Locked decisions
+
+These are settled and not revisited without a TAM ticket pinning the
+reversal rationale:
+
+| Decision | Why |
+|---|---|
+| **OpenGrep over Semgrep** | License stability — multi-vendor governance, no proprietary Pro tier that can paywall rules. The OSS engine is the same fork point; SARIF output is identical. |
+| **CycloneDX over SPDX** | First-class inline VEX (`vulnerability.analysis.state` / `.justification` / `.response`). SPDX needs a sidecar file for the same thing. |
+| **FPF flows raw end-to-end** | DT exports its Finding Packaging Format; DefectDojo ingests FPF as a known `scan_type`. No SARIF normalisation in the middle — preserves DT-specific suppression rationale. |
+| **`reimport-scan` is the default after the first push** | DefectDojo reconciles against the prior scan in the engagement: marks closed CVEs inactive, reactivates regressions, preserves triage notes. `import-scan` loses history. |
+| **DT analysis-complete uses `Polling.Until`, not webhooks** | Webhooks aren't testable from build runners. Polling is honest, observable, and bounded. |
+| **Beacon emits per-scan counts + durations only** | No per-finding events. High-cardinality cost; per-scan tags (tool, severity) are enough for trend dashboards. (Implementation pending — TAM-247.) |
+
+## Environment variables
+
+See [`docs/security-env-vars.md`](security-env-vars.md) for the
+canonical contract: `TAMP_<TOOL>_<FIELD>` naming, required-vs-optional,
+defaults.
+
+## Format choices
+
+| Artifact | Format | Where |
+|---|---|---|
+| Findings (SAST / IaC / secrets / container) | **SARIF 2.1.0** | OASIS-standard; ingested by every aggregator worth using |
+| SBOM | **CycloneDX 1.6+** | OWASP-standard; chosen over SPDX for inline VEX |
+
+Tooling rule: **if a tool can't emit SARIF (for findings) or CycloneDX
+(for SBOM), it doesn't join the chain.** That's the adoption gate.
+
+## Wave 2 / Wave 3 (preview)
+
+| Wave | Adds |
+|---|---|
+| 2 | `Tamp.Syft` (non-.NET SBOM), `Tamp.Trivy` (container + IaC + secrets), `Tamp.Gitleaks` (specialised secrets), `Tamp.Checkov` (specialised IaC) |
+| 3 | `Tamp.Cosign` (artifact signing), `Tamp.Slsa` (provenance), `Tamp.Security.Pipeline` (curated meta-package wiring the whole chain) |
+
+Tracked under TAM-235 (Wave 2) and TAM-236 (Wave 3). Both are blocked
+by Wave 1 (TAM-234) shipping to nuget.
