@@ -1,0 +1,20 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <TargetFrameworks>net8.0;net9.0;net10.0</TargetFrameworks>
+    <RootNamespace>Tamp.Sarif</RootNamespace>
+    <AssemblyName>Tamp.Sarif</AssemblyName>
+  </PropertyGroup>
+
+  <PropertyGroup Label="Package">
+    <PackageId>Tamp.Sarif</PackageId>
+    <Description>Tamp's SARIF 2.1.0 contract package: typed records (SarifReport, SarifRun, SarifResult, ...) plus load/write/merge helpers and the IFindingSource interface. Scanner satellites emit SarifReport; sinks consume it. No tool wrapped — this is the universal finding contract for the Tamp.Security.* family.</Description>
+    <IsPackable>true</IsPackable>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\Tamp.Core\Tamp.Core.csproj" />
+    <PackageReference Include="Microsoft.SourceLink.GitHub" PrivateAssets="All" />
+  </ItemGroup>
+
+</Project>

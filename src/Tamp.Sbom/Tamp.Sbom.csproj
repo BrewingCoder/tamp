@@ -1,0 +1,20 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <TargetFrameworks>net8.0;net9.0;net10.0</TargetFrameworks>
+    <RootNamespace>Tamp.Sbom</RootNamespace>
+    <AssemblyName>Tamp.Sbom</AssemblyName>
+  </PropertyGroup>
+
+  <PropertyGroup Label="Package">
+    <PackageId>Tamp.Sbom</PackageId>
+    <Description>Tamp's CycloneDX SBOM contract package: typed records (CycloneDxBom, Component, Vulnerability with inline VEX, Dependency, ...) plus load/write helpers and the ISbomSource/ISbomSink interfaces. Producers (Tamp.CycloneDx, Tamp.Syft) emit CycloneDxBom; sinks (Tamp.DependencyTrack) consume it. Chosen over SPDX for inline VEX support.</Description>
+    <IsPackable>true</IsPackable>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\Tamp.Core\Tamp.Core.csproj" />
+    <PackageReference Include="Microsoft.SourceLink.GitHub" PrivateAssets="All" />
+  </ItemGroup>
+
+</Project>

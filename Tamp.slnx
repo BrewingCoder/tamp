@@ -24,6 +24,8 @@
     <Project Path="src/Tamp.NetCli.V10/Tamp.NetCli.V10.csproj" />
     <Project Path="src/Tamp.DotNetCoverage.V18/Tamp.DotNetCoverage.V18.csproj" />
     <Project Path="src/Tamp.Analyzers/Tamp.Analyzers.csproj" />
+    <Project Path="src/Tamp.Sarif/Tamp.Sarif.csproj" />
+    <Project Path="src/Tamp.Sbom/Tamp.Sbom.csproj" />
   </Folder>
   <Folder Name="/build/">
     <Project Path="build/Build.csproj" />
@@ -36,5 +38,7 @@
     <Project Path="tests/Tamp.NetCli.V10.Tests/Tamp.NetCli.V10.Tests.csproj" />
     <Project Path="tests/Tamp.DotNetCoverage.V18.Tests/Tamp.DotNetCoverage.V18.Tests.csproj" />
     <Project Path="tests/Tamp.Analyzers.Tests/Tamp.Analyzers.Tests.csproj" />
+    <Project Path="tests/Tamp.Sarif.Tests/Tamp.Sarif.Tests.csproj" />
+    <Project Path="tests/Tamp.Sbom.Tests/Tamp.Sbom.Tests.csproj" />
   </Folder>
 </Solution>
