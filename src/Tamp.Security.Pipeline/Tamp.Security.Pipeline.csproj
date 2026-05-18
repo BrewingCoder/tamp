@@ -1,0 +1,29 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <TargetFrameworks>net8.0;net9.0;net10.0</TargetFrameworks>
+    <RootNamespace>Tamp.Security.Pipeline</RootNamespace>
+    <AssemblyName>Tamp.Security.Pipeline</AssemblyName>
+  </PropertyGroup>
+
+  <PropertyGroup Label="Package">
+    <PackageId>Tamp.Security.Pipeline</PackageId>
+    <Description>Tamp meta-package — one PackageReference, one base-class inheritance, get the whole Wave 1+2 security chain: CycloneDX SBOM → SAST (OpenGrep + Roslyn) → SCA (osv-scanner + Dependency-Track) → Trivy secrets+misconfig → DefectDojo reimport. Adopters override `SecurityProductName` + `SecuritySolutionPath` and run `tamp Security`. DT and DD legs are env-var-gated; producer half runs unconditionally. .NET-focused for v0 — non-.NET adopters override Sbom to use Tamp.Syft.V1 instead.</Description>
+    <IsPackable>true</IsPackable>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\Tamp.Core\Tamp.Core.csproj" />
+    <ProjectReference Include="..\Tamp.Sarif\Tamp.Sarif.csproj" />
+    <ProjectReference Include="..\Tamp.Sbom\Tamp.Sbom.csproj" />
+    <ProjectReference Include="..\Tamp.CycloneDx.V6\Tamp.CycloneDx.V6.csproj" />
+    <ProjectReference Include="..\Tamp.OpenGrep.V1\Tamp.OpenGrep.V1.csproj" />
+    <ProjectReference Include="..\Tamp.OsvScanner.V2\Tamp.OsvScanner.V2.csproj" />
+    <ProjectReference Include="..\Tamp.Trivy\Tamp.Trivy.csproj" />
+    <ProjectReference Include="..\Tamp.DependencyTrack.V1\Tamp.DependencyTrack.V1.csproj" />
+    <ProjectReference Include="..\Tamp.DefectDojo.V2\Tamp.DefectDojo.V2.csproj" />
+    <ProjectReference Include="..\Tamp.NetCli.V10\Tamp.NetCli.V10.csproj" />
+    <PackageReference Include="Microsoft.SourceLink.GitHub" PrivateAssets="All" />
+  </ItemGroup>
+
+</Project>

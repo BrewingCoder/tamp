@@ -1,22 +1,19 @@
 using Tamp;
 using Tamp.DotNetCoverage.V18;
 using Tamp.NetCli.V10;
+using Tamp.Security.Pipeline;
 using Tamp.SonarScanner.V10;
-using Tamp.CycloneDx.V6;
-using Tamp.OpenGrep.V1;
-using Tamp.OsvScanner.V2;
-using Tamp.Trivy;
-using Tamp.Sbom;
-using Tamp.Sarif;
-using Tamp.DependencyTrack.V1;
-using Tamp.DefectDojo.V2;
 
 /// <summary>
 /// Tamp's self-hosted build script — Tamp drives its own pipeline.
+/// Inherits <see cref="SecurityPipelineBuild"/> for the whole Wave 1+2
+/// security chain (Sbom + SAST + SCA + Trivy + DT/DD push targets get
+/// inherited; this class just supplies the .NET-specific Restore /
+/// Compile / Test / Pack / Sonar / Ci targets and the product identity).
 /// Run via <c>dotnet run --project build -- &lt;target&gt;</c> or, after
 /// <c>dotnet tool install -g Tamp.Cli</c>, via <c>tamp &lt;target&gt;</c>.
 /// </summary>
-class Build : TampBuild
+class Build : SecurityPipelineBuild
 {
     public static int Main(string[] args) => Execute<Build>(args);
 
@@ -46,40 +43,11 @@ class Build : TampBuild
 
     AbsolutePath Artifacts => RootDirectory / "artifacts";
     AbsolutePath CoverageDir => Artifacts / "coverage";
-    AbsolutePath SecurityDir => Artifacts / "security";
-    // CycloneDX canonical filename pattern (*.cdx.json). osv-scanner 2.x
-    // refuses to extract from non-canonical names like "tamp-bom.json".
-    AbsolutePath SbomFile => SecurityDir / "tamp.cdx.json";
-    AbsolutePath SarifOpenGrepFile => SecurityDir / "tamp-opengrep.sarif";
-    AbsolutePath SarifRoslynDir => SecurityDir / "roslyn";
-    AbsolutePath SarifRoslynFile => SecurityDir / "tamp-roslyn.sarif";
-    AbsolutePath SarifSastFile => SecurityDir / "tamp-sast.sarif";
-    AbsolutePath SarifCveFile => SecurityDir / "tamp-cve.sarif";
-    AbsolutePath SarifTrivyFile => SecurityDir / "tamp-trivy.sarif";
 
-    // ----- Wave 1 security chain env-var inputs (TAM-243 / TAM-245). All
-    //       OPTIONAL: when unset, the SecurityPush target no-ops cleanly so
-    //       the producer half still dogfoods on every CI run regardless of
-    //       whether DT / DD instances exist yet.
+    // ----- SecurityPipelineBuild overrides --------------------------------
 
-    // Initialiser =null silences CS0649 (the framework assigns these by reflection).
-    [Parameter("Dependency-Track base URL.", EnvironmentVariable = "TAMP_DT_URL")]
-    readonly string? DtUrl = null;
-
-    [Secret("Dependency-Track API key.", EnvironmentVariable = "TAMP_DT_API_KEY")]
-    readonly Secret? DtApiKey = null;
-
-    [Parameter("Dependency-Track project UUID for this build.", EnvironmentVariable = "TAMP_DT_PROJECT_UUID")]
-    readonly string? DtProjectUuid = null;
-
-    [Parameter("DefectDojo base URL.", EnvironmentVariable = "TAMP_DD_URL")]
-    readonly string? DdUrl = null;
-
-    [Secret("DefectDojo API v2 token.", EnvironmentVariable = "TAMP_DD_TOKEN")]
-    readonly Secret? DdToken = null;
-
-    [Parameter("DefectDojo engagement id for this build.", EnvironmentVariable = "TAMP_DD_ENGAGEMENT_ID")]
-    readonly int? DdEngagementId = null;
+    protected override string SecurityProductName => "Tamp";
+    protected override string SecuritySolutionPath => Solution.Path;
 
     Target Info => _ => _
         .Description("Print build context (branch, commit, configuration) — useful at the top of CI logs.")
@@ -209,229 +177,10 @@ class Build : TampBuild
         .DependsOn(nameof(SonarBegin), nameof(SonarEnd))
         .Description("End-to-end Sonar scan: Begin (before Compile) → Compile → Test → End. Requires SONAR_TOKEN.");
 
-    // ----- Wave 1 security chain (TAM-245 dogfood). -----
-    //
-    // Producer targets (Sbom, SecurityScan) are always runnable and emit
-    // artifacts to ./artifacts/security/. SecurityPush is opt-in: it
-    // no-ops unless TAMP_DT_URL / TAMP_DD_URL are set, so the producer
-    // half exercises on every CI run even before DT/DD instances exist
-    // in the lab.
-
-    Target Sbom => _ => _
-        .Description("Generate a CycloneDX SBOM for the Tamp solution via dotnet-CycloneDX 6.x. Output: artifacts/security/tamp.cdx.json. Pinned to spec version 1.6 (osv-scanner 2.3.8 doesn't yet accept 1.7) and the canonical *.cdx.json filename osv-scanner's extractor requires.")
-        .DependsOn(nameof(Restore))
-        .Executes(() =>
-        {
-            SecurityDir.CreateDirectory();
-            return CycloneDx.Generate(s => s
-                .SetPath(Solution.Path)
-                .SetOutputDirectory(SecurityDir)
-                .SetFilename("tamp.cdx.json")
-                .SetFormat(CycloneDxFormat.Json)
-                .SetSpecVersion("1.6")
-                .SetRecursive(true)
-                .SetExcludeTestProjects(true)
-                .SetMetadataComponentName("Tamp")
-                .SetWorkingDirectory(RootDirectory));
-        });
-
-    Target SecurityScanOpenGrep => _ => _
-        .Description("Pattern-based SAST: OpenGrep over the Tamp source tree. Output: artifacts/security/tamp-opengrep.sarif.")
-        .Executes(() =>
-        {
-            SecurityDir.CreateDirectory();
-            return OpenGrep.Scan(s => s
-                .AddTarget("src")
-                .AddTarget("tests")
-                .AddTarget("build")
-                .AddConfig("auto")
-                .SetOutputFile(SarifOpenGrepFile)
-                .AddExclude("**/bin/**")
-                .AddExclude("**/obj/**")
-                .AddExclude("artifacts/**")
-                .SetQuiet(true)
-                .SetWorkingDirectory(RootDirectory));
-        });
-
-    Target SecurityScanRoslyn => _ => _
-        .Description("Semantic SAST: SonarAnalyzer.CSharp + Roslynator + NetAnalyzers via /p:ErrorLog. Produces one SARIF per (project, TFM) pair under artifacts/security/roslyn/, then merges to tamp-roslyn.sarif. TreatWarningsAsErrors is overridden to false so findings flow to SARIF without breaking the build. Multi-TFM projects emit one SARIF per TFM; identical findings across TFMs dedup at the DefectDojo end.")
-        .DependsOn(nameof(Restore))
-        .Executes(() =>
-        {
-            SecurityDir.CreateDirectory();
-            SarifRoslynDir.CreateDirectory();
-            // Clear per-(project, TFM) SARIFs — ErrorLog opens for write but
-            // stale files from a prior wider build (e.g. before a project was
-            // removed) would otherwise linger and skew the merge.
-            foreach (var f in SarifRoslynDir.GlobFiles("*.sarif")) f.Delete();
-
-            return DotNet.Build(s => s
-                .SetProject(Solution.Path)
-                .SetConfiguration(Configuration)
-                .SetProperty("IncludeSecurityAnalyzers", "true")
-                .SetProperty("TreatWarningsAsErrors", "false")
-                .SetNoIncremental(true));
-        });
-
-    Target SecurityScan => _ => _
-        .Description("Combine SAST sources: OpenGrep SARIF + per-project Roslyn SARIFs → artifacts/security/tamp-sast.sarif. Uses SarifMerge.CombineDistinct to collapse the per-TFM duplication a multi-target Roslyn build emits — same source-line finding appears once per TFM otherwise. Runs are preserved so the tool-of-origin per finding stays identifiable downstream.")
-        .DependsOn(nameof(SecurityScanOpenGrep), nameof(SecurityScanRoslyn))
-        .Executes(() =>
-        {
-            var logs = new List<SarifLog>();
-
-            if (File.Exists(SarifOpenGrepFile))
-            {
-                logs.Add(SarifReader.LoadFromFile(SarifOpenGrepFile));
-            }
-
-            var roslynSarifs = SarifRoslynDir.GlobFiles("*.sarif").ToList();
-            foreach (var sarif in roslynSarifs)
-            {
-                logs.Add(SarifReader.LoadFromFile(sarif));
-            }
-
-            var merged = SarifMerge.CombineDistinct(logs);
-            // Also merge the per-project Roslyn SARIFs alone so adopters who
-            // only want the Roslyn slice can grab one file.
-            if (roslynSarifs.Count > 0)
-            {
-                var roslynOnly = SarifMerge.CombineDistinct(roslynSarifs.Select(f => SarifReader.LoadFromFile(f)));
-                SarifWriter.WriteToFile(roslynOnly, SarifRoslynFile);
-            }
-
-            SarifWriter.WriteToFile(merged, SarifSastFile);
-
-            var totalResults = merged.Runs.Sum(r => r.Results?.Count ?? 0);
-            Console.WriteLine($"[security] Merged {logs.Count} SARIF source(s) → {SarifSastFile.Value} ({merged.Runs.Count} runs, {totalResults} distinct findings)");
-        });
-
-    Target SecurityScanCveSbom => _ => _
-        .Description("Cross-ecosystem SCA: osv-scanner reads the CycloneDX BOM and queries OSV.dev (npm/PyPI/Cargo/Go/Maven/NuGet/Packagist/Pub). Output: artifacts/security/tamp-cve.sarif. Kept separate from tamp-sast.sarif so DefectDojo can route SAST and SCA findings to different triage queues.")
-        .DependsOn(nameof(Sbom))
-        .Executes(() =>
-        {
-            SecurityDir.CreateDirectory();
-            return OsvScanner.ScanSource(s => s
-                .SetSbomFile(SbomFile)
-                .SetOutputFile(SarifCveFile)
-                .SetFormat(OsvScannerFormat.Sarif)
-                .SetAllowNoLockfiles(true)
-                .SetWorkingDirectory(RootDirectory));
-        });
-
-    Target SecurityScanTrivy => _ => _
-        .Description("Trivy fs scan: secrets + IaC misconfiguration. Output: artifacts/security/tamp-trivy.sarif. Vuln scanner deliberately OFF — OSV-Scanner via the SBOM is the canonical SCA path for source-tree dep vulns; Trivy's vuln scanner shines for container OS-package layers that lockfile scanners can't reach. Kept as its own DefectDojo test (secrets/misconfig category is distinct from SAST and from SCA).")
-        .Executes(() =>
-        {
-            SecurityDir.CreateDirectory();
-            return Trivy.ScanFilesystem(s => s
-                .SetPath(".")
-                .AddScanner(TrivyScanner.Secret)
-                .AddScanner(TrivyScanner.Misconfig)
-                .SetOutputFile(SarifTrivyFile)
-                .AddSkipDir("artifacts")
-                .AddSkipDir("**/bin/**")
-                .AddSkipDir("**/obj/**")
-                .SetQuiet(true)
-                .SetNoProgress(true)
-                .SetWorkingDirectory(RootDirectory));
-        });
-
-    Target SecurityPush => _ => _
-        .Description("Push the SBOM to Dependency-Track and the merged SAST SARIF + CVE SARIF + Trivy secrets/misconfig SARIF + DT FPF to DefectDojo. Opt-in via TAMP_DT_URL / TAMP_DD_URL env vars; no-op when unset so producer-only builds stay green.")
-        .DependsOn(nameof(Sbom), nameof(SecurityScan), nameof(SecurityScanCveSbom), nameof(SecurityScanTrivy))
-        .Executes(async () =>
-        {
-            string? exportedFpf = null;
-
-            if (!string.IsNullOrEmpty(DtUrl) && DtApiKey is not null && !string.IsNullOrEmpty(DtProjectUuid))
-            {
-                Console.WriteLine($"[security] Uploading SBOM to Dependency-Track at {DtUrl} (project {DtProjectUuid})…");
-                var dtSettings = new DependencyTrackSettings
-                {
-                    BaseUrl = new Uri(DtUrl),
-                    ApiKey = DtApiKey,
-                };
-                using var dt = new DependencyTrackClient(dtSettings);
-                var bom = SbomReader.LoadFromFile(SbomFile);
-                var upload = await dt.UploadBomAsync(Guid.Parse(DtProjectUuid), bom);
-                Console.WriteLine($"[security] DT upload token: {upload.Token}; waiting for async analysis…");
-                var settled = await dt.WaitForAnalysisCompleteAsync(upload.Token, dtSettings.DefaultAnalysisTimeout, Backoff.Constant(TimeSpan.FromSeconds(3)));
-                if (!settled)
-                {
-                    Console.WriteLine("[security] DT analysis didn't settle within budget; skipping findings export.");
-                }
-                else
-                {
-                    exportedFpf = await dt.ExportFindingsAsync(Guid.Parse(DtProjectUuid));
-                    Console.WriteLine($"[security] DT findings exported ({exportedFpf.Length} bytes of FPF JSON).");
-                }
-            }
-            else
-            {
-                Console.WriteLine("[security] TAMP_DT_URL / TAMP_DT_API_KEY / TAMP_DT_PROJECT_UUID not all set — skipping Dependency-Track push.");
-            }
-
-            if (!string.IsNullOrEmpty(DdUrl) && DdToken is not null && DdEngagementId is { } engagementId)
-            {
-                Console.WriteLine($"[security] Pushing findings to DefectDojo at {DdUrl} (engagement {engagementId})…");
-                var ddSettings = new DefectDojoSettings
-                {
-                    BaseUrl = new Uri(DdUrl),
-                    Token = DdToken,
-                };
-                using var dd = new DefectDojoClient(ddSettings);
-
-                // DD's reimport-scan needs an existing test to reimport into.
-                // For first-push idempotency, pass product_name + engagement_name
-                // + test_title with auto_create_context=true and DD finds-or-creates.
-                var sastOptions = new DefectDojoImportOptions
-                {
-                    ProductName = "Tamp",
-                    EngagementName = "Tamp CI",
-                    TestTitle = "Tamp SAST (OpenGrep + Roslyn)",
-                };
-                var cveOptions = sastOptions with { TestTitle = "Tamp SCA (osv-scanner)" };
-                var trivyOptions = sastOptions with { TestTitle = "Tamp Secrets+Misconfig (Trivy)" };
-                var fpfOptions = sastOptions with { TestTitle = "Tamp SCA (Dependency-Track FPF)" };
-
-                if (File.Exists(SarifSastFile))
-                {
-                    var sarifLog = SarifReader.LoadFromFile(SarifSastFile);
-                    var sarifResult = await dd.ReimportSarifAsync(engagementId, sarifLog, sastOptions);
-                    Console.WriteLine($"[security] DD SAST SARIF reimport → test {sarifResult.TestId}");
-                }
-
-                if (File.Exists(SarifCveFile))
-                {
-                    var cveLog = SarifReader.LoadFromFile(SarifCveFile);
-                    var cveResult = await dd.ReimportSarifAsync(engagementId, cveLog, cveOptions);
-                    Console.WriteLine($"[security] DD CVE SARIF reimport → test {cveResult.TestId}");
-                }
-
-                if (File.Exists(SarifTrivyFile))
-                {
-                    var trivyLog = SarifReader.LoadFromFile(SarifTrivyFile);
-                    var trivyResult = await dd.ReimportSarifAsync(engagementId, trivyLog, trivyOptions);
-                    Console.WriteLine($"[security] DD Trivy SARIF reimport → test {trivyResult.TestId}");
-                }
-
-                if (exportedFpf is not null)
-                {
-                    var fpfResult = await dd.ReimportScanAsync(DefectDojoScanType.DependencyTrackFpf, engagementId, exportedFpf, fpfOptions);
-                    Console.WriteLine($"[security] DD FPF reimport → test {fpfResult.TestId}");
-                }
-            }
-            else
-            {
-                Console.WriteLine("[security] TAMP_DD_URL / TAMP_DD_TOKEN / TAMP_DD_ENGAGEMENT_ID not all set — skipping DefectDojo push.");
-            }
-        });
-
-    Target Security => _ => _
-        .Description("End-to-end Wave 1+2 chain: Sbom + SecurityScan (SAST: OpenGrep + Roslyn merge) + SecurityScanCveSbom (SCA: osv-scanner) + SecurityScanTrivy (Secrets+Misconfig) + (gated) SecurityPush. Run locally as `tamp Security`.")
-        .DependsOn(nameof(Sbom), nameof(SecurityScan), nameof(SecurityScanCveSbom), nameof(SecurityScanTrivy), nameof(SecurityPush));
+    // All security targets (Sbom + SecurityScanOpenGrep / Roslyn / SecurityScan
+    // merge / SecurityScanCveSbom / SecurityScanTrivy / SecurityPush / Security)
+    // are inherited from SecurityPipelineBuild. Adopter overrides only the
+    // SecurityProductName + SecuritySolutionPath properties above (TAM-253).
 
     Target Default => _ => _
         .DependsOn(nameof(Compile))

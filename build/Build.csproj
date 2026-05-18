@@ -38,6 +38,7 @@
     <ProjectReference Include="..\src\Tamp.DefectDojo.V2\Tamp.DefectDojo.V2.csproj" />
     <ProjectReference Include="..\src\Tamp.OsvScanner.V2\Tamp.OsvScanner.V2.csproj" />
     <ProjectReference Include="..\src\Tamp.Trivy\Tamp.Trivy.csproj" />
+    <ProjectReference Include="..\src\Tamp.Security.Pipeline\Tamp.Security.Pipeline.csproj" />
 
     <!--
       Cross-repo PackageReference: Tamp.SonarScanner.V10 ships from
