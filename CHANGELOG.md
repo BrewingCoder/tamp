@@ -8,6 +8,45 @@ Pre-1.0 versions may break public API freely between minor versions; the `0.x` l
 
 ## [Unreleased]
 
+## [1.11.0] — 2026-05-18 — Wave 1+2+3 security & compliance chain (TAM-234 / TAM-235 / TAM-236)
+
+End-to-end SBOM → SAST → SCA → secrets/misconfig → DT/DD push chain across eleven new satellites + one one-import meta-package. Validated live against local Dependency-Track 4.14.2 + DefectDojo docker-compose stacks producing four distinct DefectDojo tests (SAST 505 findings + 3× SCA/secrets 0 findings on the Tamp tree) in ~40 s end-to-end. See [`docs/security-chain.md`](docs/security-chain.md) for the adopter recipe.
+
+### Added — Wave 1 contract packages
+
+- **`Tamp.Sarif`** (TAM-237) — SARIF 2.1.0 typed record set (`SarifLog`, `SarifRun`, `SarifResult`, `SarifLevel` with lowercase converter, `$schema` mapping, source-gen `JsonSerializerContext`), `SarifReader` / `SarifWriter` / `SarifMerge` static APIs, `IFindingSource` interface. 24 tests with JSON-equality round-trip.
+- **`Tamp.Sbom`** (TAM-238) — CycloneDX 1.6 / 1.7 typed record set with first-class inline VEX (`CycloneDxVexState` / `CycloneDxVexJustification` / `CycloneDxVexResponse` as snake_case enums; `CycloneDxSeverity` lowercase; `bom-ref` hyphen preservation), `SbomReader` / `SbomWriter`, `ISbomSource` / `ISbomSink` interfaces. 36 tests including a real dotnet-CycloneDX-shaped doc with inline VEX.
+
+### Added — Wave 1 wrappers
+
+- **`Tamp.CycloneDx.V6`** (TAM-239) — `dotnet-CycloneDX 6.x` wrapper. Pinned to `.V6` because the 5→6 boundary renamed `--json` to `--output-format Json`, dropped `--include-xml` / `--exclude-transitive` / `--set-serial-number`, and the spec-version default shifted to 1.7.
+- **`Tamp.OpenGrep.V1`** (TAM-240) — `opengrep 1.x` SAST wrapper. SARIF output by default; chose OpenGrep over Semgrep for license stability (multi-vendor governance, no Pro tier paywalling rules).
+- **`Tamp.DependencyTrack.V1`** (TAM-241) — REST client for Dependency-Track v4.x. `UploadBomAsync` → `WaitForAnalysisCompleteAsync` (uses `Tamp.Polling.Until`) → `ExportFindingsAsync` (raw FPF passthrough — no SARIF normalisation in the middle, preserves DT-specific VEX-suppression rationale).
+- **`Tamp.DefectDojo.V2`** (TAM-242) — REST client for DefectDojo API v2. `ImportScanAsync` / `ReimportScanAsync` + `ImportSarifAsync` / `ReimportSarifAsync` convenience overloads. Auth via `Token` scheme (not Bearer). **First-push idempotency** via `DefectDojoImportOptions.ProductName / EngagementName / TestTitle / AutoCreateContext` (default true) so reimport-scan works from build #1 without pre-creating tests.
+- **`Tamp.Core.Polling.Until`** (TAM-243) — generic poll-until-condition helper. First consumer is DT's analysis wait; same shape fits Azure deployments + NuGet propagation. Bool return on timeout, propagates cancellation + condition exceptions, uses `Backoff` for wait strategy.
+- **Roslyn analyzer SARIF leg** (TAM-248) — opt-in `SonarAnalyzer.CSharp` + `Roslynator.Analyzers` + built-in `Microsoft.CodeAnalysis.NetAnalyzers` activated by `/p:IncludeSecurityAnalyzers=true`; per-(project, TFM) SARIF via MSBuild's `<ErrorLog>`. Adds ~1400 findings on a clean tree that pattern-only SAST can't produce.
+- **`Tamp.Sarif.SarifDedup` + `SarifMerge.CombineDistinct`** (TAM-249) — collapse duplicate results by `(ruleId, uri, startLine, startColumn)` preserving first-occurrence's run-of-origin. Drops multi-TFM finding triplication from 2.85x to 1.00x dup factor.
+
+### Added — Wave 2 wrappers
+
+- **`Tamp.OsvScanner.V2`** (TAM-250) — `osv-scanner 2.x scan source` wrapper. Cross-ecosystem SCA reading CycloneDX SBOM or per-language lockfiles, querying OSV.dev (npm / PyPI / Cargo / Go / Maven / NuGet / Packagist / Pub). SARIF default; also supports CycloneDX 1.4/1.5, SPDX 2.3, JSON, markdown, HTML, gh-annotations. Air-gap flags (`--offline` / `--offline-vulnerabilities` / `--download-offline-databases`).
+- **`Tamp.Trivy`** (TAM-251) — single satellite, three subcommands: `ScanImage` (container OS-package + lockfile vulns), `ScanConfig` (IaC misconfig: Terraform / Kubernetes / Dockerfile / CloudFormation / Helm / Ansible), `ScanFilesystem` (source-tree secrets + misconfig + lockfile vulns). Shared `TrivyScanSettingsBase`. Unpinned name — pre-1.0 with stable CLI surface per ADR 0002.
+- **`Tamp.Syft.V1`** (TAM-252) — universal SBOM producer via Anchore syft 1.x. Three subcommands: `ScanDirectory` (multi-ecosystem cataloger sweep), `ScanImage` (registry / docker / podman / OCI archive / OCI dir / Singularity), `ScanArchive` (single jar / war / zip / tar). Multi-output `-o format=file` support; ten output formats covered.
+
+### Added — Wave 3
+
+- **`Tamp.Security.Pipeline`** (TAM-253) — one-import meta-package. Abstract `SecurityPipelineBuild : TampBuild` pre-defines every Sbom / SecurityScanOpenGrep / SecurityScanRoslyn / SecurityScan / SecurityScanCveSbom / SecurityScanTrivy / SecurityPush / Security target. Adopter overrides only `SecurityProductName` + `SecuritySolutionPath` (both `abstract`); every target is `virtual` so individuals can be overridden. Reads `TAMP_DT_URL/API_KEY/PROJECT_UUID` and `TAMP_DD_URL/TOKEN/ENGAGEMENT_ID` env vars; producer half runs unconditionally, DT/DD push legs no-op cleanly when env vars are unset.
+
+### Added — Docs
+
+- **[`docs/security-chain.md`](docs/security-chain.md)** (TAM-246) — Wave 1+2+3 narrative, Quick adoption recipe for `SecurityPipelineBuild`, manual-wiring escape-hatch, locked decisions table (OpenGrep over Semgrep, CycloneDX over SPDX, FPF raw passthrough, reimport-after-first, polling over webhooks).
+- **[`docs/security-env-vars.md`](docs/security-env-vars.md)** (TAM-243) — `TAMP_<TOOL>_<FIELD>` env-var contract; single source of truth across the `Tamp.Security.*` family.
+
+### Changed
+
+- `Directory.Build.props` gains a conditional analyzer pack (SonarAnalyzer.CSharp + Roslynator.Analyzers, scoped to non-test projects) and `<ErrorLog>` setting that activate only under `/p:IncludeSecurityAnalyzers=true`. Default Compile / Test / Pack / Ci builds are unchanged.
+- `build/Build.cs` dogfooded — inherits `SecurityPipelineBuild` instead of defining the security targets inline (−165 lines).
+
 ## [1.10.0] — pending — adopter `IBuildReporter` plug-in via `[BuildReporter]` + per-target output-tail capture (TAM-230 foundation)
 
 ### Added
