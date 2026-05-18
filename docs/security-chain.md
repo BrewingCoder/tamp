@@ -23,6 +23,7 @@ satellites below. Tamp itself dogfoods the chain — see
 | [`Tamp.OsvScanner.V2`](../src/Tamp.OsvScanner.V2) | SCA producer (cross-ecosystem) | CommandPlan wrapping `osv-scanner 2.x`; reads the CycloneDX SBOM and queries OSV.dev (npm / PyPI / Cargo / Go / Maven / NuGet / Packagist / Pub). SARIF output, slots into the chain like the SAST sources but kept as a separate file (tamp-cve.sarif) so DefectDojo can route SAST and SCA to different triage queues. Wave 2 — pulled forward for non-.NET coverage. |
 | [`Tamp.DependencyTrack.V1`](../src/Tamp.DependencyTrack.V1) | SBOM/CVE/VEX hub | REST client for OWASP Dependency-Track v4.x (upload BOM, wait for analysis, export FPF) |
 | [`Tamp.DefectDojo.V2`](../src/Tamp.DefectDojo.V2) | Findings sink | REST client for DefectDojo v2 (import / reimport SARIF or FPF) |
+| [`Tamp.Security.Pipeline`](../src/Tamp.Security.Pipeline) | One-import meta-package | Abstract `SecurityPipelineBuild : TampBuild`. Adopters inherit, override `SecurityProductName` + `SecuritySolutionPath`, and get every Sbom / SecurityScan* / SecurityPush / Security target above for free. The recipe below is what the base class implements. Wave 3. |
 
 Plus one Core addition:
 
@@ -30,11 +31,55 @@ Plus one Core addition:
 |---|---|
 | [`Tamp.Polling.Until`](../src/Tamp.Core/Polling.cs) | Generic poll-until-condition helper. First consumer is the DT analysis wait; designed to also fit Azure deployments and NuGet index propagation. |
 
-## End-to-end recipe
+## Quick adoption — `SecurityPipelineBuild`
 
-This is the canonical flow. The recipe is implemented verbatim in
-Tamp's own `build/Build.cs` — copy-paste, swap the project paths, set
-env vars, done.
+Drop the meta-package PackageReference into your build script and
+inherit. Override two properties. Done.
+
+```csharp
+using Tamp;
+using Tamp.NetCli.V10;
+using Tamp.Security.Pipeline;
+
+class Build : SecurityPipelineBuild
+{
+    public static int Main(string[] args) => Execute<Build>(args);
+
+    [Solution] readonly Solution Solution = null!;
+    [Parameter] Configuration Configuration = IsLocalBuild ? Configuration.Debug : Configuration.Release;
+
+    protected override string SecurityProductName  => "HoldFast";   // or "Strata", etc.
+    protected override string SecuritySolutionPath => Solution.Path;
+
+    Target Restore => _ => _.Executes(() => DotNet.Restore(s => s.SetProject(Solution.Path)));
+    Target Compile => _ => _.DependsOn(nameof(Restore))
+                            .Executes(() => DotNet.Build(s => s.SetProject(Solution.Path)
+                                                              .SetConfiguration(Configuration)));
+    // … your other targets stay as-is
+}
+```
+
+`tamp Security` now runs the whole chain. Set
+`TAMP_DT_URL/TAMP_DT_API_KEY/TAMP_DT_PROJECT_UUID` to push to
+Dependency-Track and/or `TAMP_DD_URL/TAMP_DD_TOKEN/TAMP_DD_ENGAGEMENT_ID`
+to push to DefectDojo. Without them `SecurityPush` logs a clean skip
+and the producer half still runs.
+
+For the Roslyn semantic-SAST leg you also need a `Directory.Build.props`
+that conditionally includes the analyzer PackageReferences when
+`IncludeSecurityAnalyzers=true` — see Tamp's own
+[`Directory.Build.props`](../Directory.Build.props) for the canonical
+wiring (SonarAnalyzer.CSharp + Roslynator.Analyzers, scoped to non-test
+projects, with `<ErrorLog>` set to a per-(project, TFM) SARIF path).
+
+Every inherited target is `virtual` — override `Sbom`,
+`SecurityScanTrivy`, etc. when defaults don't fit your repo layout
+(e.g. non-.NET adopters swap `Sbom` to use `Tamp.Syft.V1`).
+
+## End-to-end recipe (manual wiring)
+
+This is the canonical flow the meta-package implements. Use this if
+you can't (or won't) inherit `SecurityPipelineBuild`.
 
 ```csharp
 using Tamp;
