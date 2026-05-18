@@ -5,6 +5,7 @@ using Tamp.SonarScanner.V10;
 using Tamp.CycloneDx.V6;
 using Tamp.OpenGrep.V1;
 using Tamp.OsvScanner.V2;
+using Tamp.Trivy;
 using Tamp.Sbom;
 using Tamp.Sarif;
 using Tamp.DependencyTrack.V1;
@@ -54,6 +55,7 @@ class Build : TampBuild
     AbsolutePath SarifRoslynFile => SecurityDir / "tamp-roslyn.sarif";
     AbsolutePath SarifSastFile => SecurityDir / "tamp-sast.sarif";
     AbsolutePath SarifCveFile => SecurityDir / "tamp-cve.sarif";
+    AbsolutePath SarifTrivyFile => SecurityDir / "tamp-trivy.sarif";
 
     // ----- Wave 1 security chain env-var inputs (TAM-243 / TAM-245). All
     //       OPTIONAL: when unset, the SecurityPush target no-ops cleanly so
@@ -318,9 +320,27 @@ class Build : TampBuild
                 .SetWorkingDirectory(RootDirectory));
         });
 
+    Target SecurityScanTrivy => _ => _
+        .Description("Trivy fs scan: secrets + IaC misconfiguration. Output: artifacts/security/tamp-trivy.sarif. Vuln scanner deliberately OFF — OSV-Scanner via the SBOM is the canonical SCA path for source-tree dep vulns; Trivy's vuln scanner shines for container OS-package layers that lockfile scanners can't reach. Kept as its own DefectDojo test (secrets/misconfig category is distinct from SAST and from SCA).")
+        .Executes(() =>
+        {
+            SecurityDir.CreateDirectory();
+            return Trivy.ScanFilesystem(s => s
+                .SetPath(".")
+                .AddScanner(TrivyScanner.Secret)
+                .AddScanner(TrivyScanner.Misconfig)
+                .SetOutputFile(SarifTrivyFile)
+                .AddSkipDir("artifacts")
+                .AddSkipDir("**/bin/**")
+                .AddSkipDir("**/obj/**")
+                .SetQuiet(true)
+                .SetNoProgress(true)
+                .SetWorkingDirectory(RootDirectory));
+        });
+
     Target SecurityPush => _ => _
-        .Description("Push the SBOM to Dependency-Track and the merged SAST SARIF + CVE SARIF + DT FPF to DefectDojo. Opt-in via TAMP_DT_URL / TAMP_DD_URL env vars; no-op when unset so producer-only builds stay green.")
-        .DependsOn(nameof(Sbom), nameof(SecurityScan), nameof(SecurityScanCveSbom))
+        .Description("Push the SBOM to Dependency-Track and the merged SAST SARIF + CVE SARIF + Trivy secrets/misconfig SARIF + DT FPF to DefectDojo. Opt-in via TAMP_DT_URL / TAMP_DD_URL env vars; no-op when unset so producer-only builds stay green.")
+        .DependsOn(nameof(Sbom), nameof(SecurityScan), nameof(SecurityScanCveSbom), nameof(SecurityScanTrivy))
         .Executes(async () =>
         {
             string? exportedFpf = null;
@@ -373,6 +393,7 @@ class Build : TampBuild
                     TestTitle = "Tamp SAST (OpenGrep + Roslyn)",
                 };
                 var cveOptions = sastOptions with { TestTitle = "Tamp SCA (osv-scanner)" };
+                var trivyOptions = sastOptions with { TestTitle = "Tamp Secrets+Misconfig (Trivy)" };
                 var fpfOptions = sastOptions with { TestTitle = "Tamp SCA (Dependency-Track FPF)" };
 
                 if (File.Exists(SarifSastFile))
@@ -389,6 +410,13 @@ class Build : TampBuild
                     Console.WriteLine($"[security] DD CVE SARIF reimport → test {cveResult.TestId}");
                 }
 
+                if (File.Exists(SarifTrivyFile))
+                {
+                    var trivyLog = SarifReader.LoadFromFile(SarifTrivyFile);
+                    var trivyResult = await dd.ReimportSarifAsync(engagementId, trivyLog, trivyOptions);
+                    Console.WriteLine($"[security] DD Trivy SARIF reimport → test {trivyResult.TestId}");
+                }
+
                 if (exportedFpf is not null)
                 {
                     var fpfResult = await dd.ReimportScanAsync(DefectDojoScanType.DependencyTrackFpf, engagementId, exportedFpf, fpfOptions);
@@ -402,8 +430,8 @@ class Build : TampBuild
         });
 
     Target Security => _ => _
-        .Description("End-to-end Wave 1+2 chain: Sbom + SecurityScan (SAST: OpenGrep + Roslyn merge) + SecurityScanCveSbom (SCA: osv-scanner) + (gated) SecurityPush. Run locally as `tamp Security`.")
-        .DependsOn(nameof(Sbom), nameof(SecurityScan), nameof(SecurityScanCveSbom), nameof(SecurityPush));
+        .Description("End-to-end Wave 1+2 chain: Sbom + SecurityScan (SAST: OpenGrep + Roslyn merge) + SecurityScanCveSbom (SCA: osv-scanner) + SecurityScanTrivy (Secrets+Misconfig) + (gated) SecurityPush. Run locally as `tamp Security`.")
+        .DependsOn(nameof(Sbom), nameof(SecurityScan), nameof(SecurityScanCveSbom), nameof(SecurityScanTrivy), nameof(SecurityPush));
 
     Target Default => _ => _
         .DependsOn(nameof(Compile))
