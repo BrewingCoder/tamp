@@ -10,7 +10,7 @@ public class OpenGrepScanTests
         var plan = OpenGrep.Scan(s => s.AddTarget("src/"));
 
         Assert.Equal("opengrep", plan.Executable);
-        Assert.Equal(new[] { "scan", "--sarif", "--metrics", "off", "src/" }, plan.Arguments);
+        Assert.Equal(new[] { "scan", "--sarif", "--disable-version-check", "src/" }, plan.Arguments);
     }
 
     [Fact]
@@ -28,20 +28,17 @@ public class OpenGrepScanTests
     }
 
     [Fact]
-    public void Metrics_Off_Is_Default_For_Air_Gap_Friendliness()
+    public void Version_Check_Disabled_By_Default_For_Air_Gap_Friendliness()
     {
         var plan = OpenGrep.Scan(s => s.AddTarget("."));
-        var args = plan.Arguments.ToList();
-        var metricsIdx = args.IndexOf("--metrics");
-        Assert.True(metricsIdx >= 0, "Expected --metrics flag present by default");
-        Assert.Equal("off", args[metricsIdx + 1]);
+        Assert.Contains("--disable-version-check", plan.Arguments);
     }
 
     [Fact]
-    public void Metrics_Can_Be_Enabled_By_Opting_Out_Of_Disable()
+    public void Version_Check_Can_Be_Re_Enabled()
     {
-        var plan = OpenGrep.Scan(s => s.AddTarget(".").SetDisableMetrics(false));
-        Assert.DoesNotContain("--metrics", plan.Arguments);
+        var plan = OpenGrep.Scan(s => s.AddTarget(".").SetDisableVersionCheck(false));
+        Assert.DoesNotContain("--disable-version-check", plan.Arguments);
     }
 
     [Fact]
@@ -69,49 +66,36 @@ public class OpenGrepScanTests
     }
 
     [Fact]
-    public void Baseline_File_Translates_To_Baseline_File_Flag()
+    public void Baseline_Commit_Translates_To_Equals_Form_Flag()
     {
-        var plan = OpenGrep.Scan(s => s.AddTarget(".").SetBaselineFile("./baseline.sarif"));
-
-        var args = plan.Arguments.ToList();
-        var baseIdx = args.IndexOf("--baseline-file");
-        Assert.True(baseIdx >= 0);
-        Assert.Equal("./baseline.sarif", args[baseIdx + 1]);
+        var plan = OpenGrep.Scan(s => s.AddTarget(".").SetBaselineCommit("abc1234"));
+        Assert.Contains("--baseline-commit=abc1234", plan.Arguments);
     }
 
     [Theory]
-    [InlineData(OpenGrepSeverity.Info, "INFO")]
-    [InlineData(OpenGrepSeverity.Warning, "WARNING")]
-    [InlineData(OpenGrepSeverity.Error, "ERROR")]
-    public void Severity_Threshold_Maps_To_Uppercase_Wire_Value(OpenGrepSeverity severity, string expectedWire)
+    [InlineData(OpenGrepSeverity.Info, "--severity=INFO")]
+    [InlineData(OpenGrepSeverity.Warning, "--severity=WARNING")]
+    [InlineData(OpenGrepSeverity.Error, "--severity=ERROR")]
+    public void Severity_Threshold_Maps_To_Uppercase_Equals_Form(OpenGrepSeverity severity, string expectedArg)
     {
         var plan = OpenGrep.Scan(s => s.AddTarget(".").SetSeverityThreshold(severity));
-
-        var args = plan.Arguments.ToList();
-        var sevIdx = args.IndexOf("--severity");
-        Assert.True(sevIdx >= 0);
-        Assert.Equal(expectedWire, args[sevIdx + 1]);
+        Assert.Contains(expectedArg, plan.Arguments);
     }
 
     [Fact]
-    public void Excludes_Translate_To_Repeated_Exclude_Flags()
+    public void Excludes_Translate_To_Equals_Form_Flags()
     {
         var plan = OpenGrep.Scan(s => s.AddTarget(".").AddExclude("**/bin/**").AddExclude("**/obj/**"));
 
-        Assert.Equal(2, plan.Arguments.Count(a => a == "--exclude"));
-        Assert.Contains("**/bin/**", plan.Arguments);
-        Assert.Contains("**/obj/**", plan.Arguments);
+        Assert.Contains("--exclude=**/bin/**", plan.Arguments);
+        Assert.Contains("--exclude=**/obj/**", plan.Arguments);
     }
 
     [Fact]
-    public void Max_Target_Bytes_Emitted_As_Invariant_Decimal()
+    public void Max_Target_Bytes_Emitted_As_Invariant_Decimal_In_Equals_Form()
     {
         var plan = OpenGrep.Scan(s => s.AddTarget(".").SetMaxTargetBytes(5_000_000L));
-
-        var args = plan.Arguments.ToList();
-        var idx = args.IndexOf("--max-target-bytes");
-        Assert.True(idx >= 0);
-        Assert.Equal("5000000", args[idx + 1]);
+        Assert.Contains("--max-target-bytes=5000000", plan.Arguments);
     }
 
     [Fact]
@@ -184,9 +168,9 @@ public class OpenGrepScanTests
             "--config", "auto",
             "--sarif",
             "--output", "./artifacts/opengrep.sarif",
-            "--severity", "WARNING",
-            "--exclude", "**/generated/**",
-            "--metrics", "off",
+            "--severity=WARNING",
+            "--exclude=**/generated/**",
+            "--disable-version-check",
             "--quiet",
             "src/", "tests/",
         }, plan.Arguments);

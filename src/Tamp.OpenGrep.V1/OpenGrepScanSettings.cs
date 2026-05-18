@@ -18,8 +18,12 @@ public sealed class OpenGrepScanSettings
     /// <summary>Emit SARIF format. On by default — the Wave 1 chain depends on it.</summary>
     public bool Sarif { get; set; } = true;
 
-    /// <summary>Baseline SARIF path: only findings absent from the baseline are reported.</summary>
-    public string? BaselineFile { get; set; }
+    /// <summary>
+    /// Baseline mode: only report findings that are NEW compared to the
+    /// commit at this git ref. Maps to <c>--baseline-commit</c>. Pass a
+    /// git SHA, branch, or tag — opengrep diffs against it.
+    /// </summary>
+    public string? BaselineCommit { get; set; }
 
     /// <summary>Optional severity floor (suppress findings below this level).</summary>
     public OpenGrepSeverity? SeverityThreshold { get; set; }
@@ -27,14 +31,18 @@ public sealed class OpenGrepScanSettings
     /// <summary>Exclude glob patterns (relative to repo root).</summary>
     public List<string> Excludes { get; } = new();
 
-    /// <summary>Max bytes per target file. Default is the tool's default; raise for large generated files.</summary>
+    /// <summary>Max bytes per target file. Default is the tool's default (1 MB); raise for large generated files.</summary>
     public long? MaxTargetBytes { get; set; }
 
     /// <summary>Suppress non-finding output (banners, progress).</summary>
     public bool Quiet { get; set; }
 
-    /// <summary>Turn metrics reporting off (Wave 1 default — federal targets often disallow outbound telemetry).</summary>
-    public bool DisableMetrics { get; set; } = true;
+    /// <summary>
+    /// Disable opengrep's outbound version-check call. On by default — the
+    /// Wave 1 stance is air-gap friendliness; federal targets often
+    /// disallow outbound network calls from build runners.
+    /// </summary>
+    public bool DisableVersionCheck { get; set; } = true;
 
     public string? WorkingDirectory { get; set; }
     public Dictionary<string, string> EnvironmentVariables { get; } = new();
@@ -46,12 +54,12 @@ public sealed class OpenGrepScanSettings
     public OpenGrepScanSettings AddConfigs(IEnumerable<string> configs) { Configs.AddRange(configs); return this; }
     public OpenGrepScanSettings SetOutputFile(string? path) { OutputFile = path; return this; }
     public OpenGrepScanSettings SetSarif(bool v) { Sarif = v; return this; }
-    public OpenGrepScanSettings SetBaselineFile(string? path) { BaselineFile = path; return this; }
+    public OpenGrepScanSettings SetBaselineCommit(string? gitRef) { BaselineCommit = gitRef; return this; }
     public OpenGrepScanSettings SetSeverityThreshold(OpenGrepSeverity? severity) { SeverityThreshold = severity; return this; }
     public OpenGrepScanSettings AddExclude(string pattern) { Excludes.Add(pattern); return this; }
     public OpenGrepScanSettings SetMaxTargetBytes(long? bytes) { MaxTargetBytes = bytes; return this; }
     public OpenGrepScanSettings SetQuiet(bool v) { Quiet = v; return this; }
-    public OpenGrepScanSettings SetDisableMetrics(bool v) { DisableMetrics = v; return this; }
+    public OpenGrepScanSettings SetDisableVersionCheck(bool v) { DisableVersionCheck = v; return this; }
     public OpenGrepScanSettings SetWorkingDirectory(string? cwd) { WorkingDirectory = cwd; return this; }
 
     public CommandPlan ToCommandPlan()
@@ -75,35 +83,27 @@ public sealed class OpenGrepScanSettings
             args.Add(OutputFile!);
         }
 
-        if (!string.IsNullOrEmpty(BaselineFile))
+        if (!string.IsNullOrEmpty(BaselineCommit))
         {
-            args.Add("--baseline-file");
-            args.Add(BaselineFile!);
+            args.Add($"--baseline-commit={BaselineCommit}");
         }
 
         if (SeverityThreshold is { } sev)
         {
-            args.Add("--severity");
-            args.Add(SeverityToWire(sev));
+            args.Add($"--severity={SeverityToWire(sev)}");
         }
 
         foreach (var exclude in Excludes)
         {
-            args.Add("--exclude");
-            args.Add(exclude);
+            args.Add($"--exclude={exclude}");
         }
 
         if (MaxTargetBytes is { } bytes)
         {
-            args.Add("--max-target-bytes");
-            args.Add(bytes.ToString(System.Globalization.CultureInfo.InvariantCulture));
+            args.Add($"--max-target-bytes={bytes.ToString(System.Globalization.CultureInfo.InvariantCulture)}");
         }
 
-        if (DisableMetrics)
-        {
-            args.Add("--metrics");
-            args.Add("off");
-        }
+        if (DisableVersionCheck) args.Add("--disable-version-check");
 
         if (Quiet) args.Add("--quiet");
 
