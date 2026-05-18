@@ -108,6 +108,14 @@ public sealed class DefectDojoClient : IDisposable
             form.Add(new StringContent(scanDate.ToString("yyyy-MM-dd", CultureInfo.InvariantCulture)), "scan_date");
         if (!string.IsNullOrEmpty(options.BuildId))
             form.Add(new StringContent(options.BuildId, Encoding.UTF8), "build_id");
+        if (!string.IsNullOrEmpty(options.ProductName))
+            form.Add(new StringContent(options.ProductName, Encoding.UTF8), "product_name");
+        if (!string.IsNullOrEmpty(options.EngagementName))
+            form.Add(new StringContent(options.EngagementName, Encoding.UTF8), "engagement_name");
+        if (!string.IsNullOrEmpty(options.TestTitle))
+            form.Add(new StringContent(options.TestTitle, Encoding.UTF8), "test_title");
+        if (options.AutoCreateContext)
+            form.Add(new StringContent("true", Encoding.UTF8), "auto_create_context");
 
         var fileContent = new ByteArrayContent(Encoding.UTF8.GetBytes(scanPayload));
         fileContent.Headers.ContentType = new MediaTypeHeaderValue("application/json");

@@ -363,23 +363,35 @@ class Build : TampBuild
                 };
                 using var dd = new DefectDojoClient(ddSettings);
 
+                // DD's reimport-scan needs an existing test to reimport into.
+                // For first-push idempotency, pass product_name + engagement_name
+                // + test_title with auto_create_context=true and DD finds-or-creates.
+                var sastOptions = new DefectDojoImportOptions
+                {
+                    ProductName = "Tamp",
+                    EngagementName = "Tamp CI",
+                    TestTitle = "Tamp SAST (OpenGrep + Roslyn)",
+                };
+                var cveOptions = sastOptions with { TestTitle = "Tamp SCA (osv-scanner)" };
+                var fpfOptions = sastOptions with { TestTitle = "Tamp SCA (Dependency-Track FPF)" };
+
                 if (File.Exists(SarifSastFile))
                 {
                     var sarifLog = SarifReader.LoadFromFile(SarifSastFile);
-                    var sarifResult = await dd.ReimportSarifAsync(engagementId, sarifLog);
+                    var sarifResult = await dd.ReimportSarifAsync(engagementId, sarifLog, sastOptions);
                     Console.WriteLine($"[security] DD SAST SARIF reimport → test {sarifResult.TestId}");
                 }
 
                 if (File.Exists(SarifCveFile))
                 {
                     var cveLog = SarifReader.LoadFromFile(SarifCveFile);
-                    var cveResult = await dd.ReimportSarifAsync(engagementId, cveLog);
+                    var cveResult = await dd.ReimportSarifAsync(engagementId, cveLog, cveOptions);
                     Console.WriteLine($"[security] DD CVE SARIF reimport → test {cveResult.TestId}");
                 }
 
                 if (exportedFpf is not null)
                 {
-                    var fpfResult = await dd.ReimportScanAsync(DefectDojoScanType.DependencyTrackFpf, engagementId, exportedFpf);
+                    var fpfResult = await dd.ReimportScanAsync(DefectDojoScanType.DependencyTrackFpf, engagementId, exportedFpf, fpfOptions);
                     Console.WriteLine($"[security] DD FPF reimport → test {fpfResult.TestId}");
                 }
             }

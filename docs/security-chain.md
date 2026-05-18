@@ -125,6 +125,29 @@ When the DT or DD env vars aren't set, `SecurityPush` logs a clean skip
 and returns success — the producer half stays green even before the
 hubs are reachable.
 
+## Is Dependency-Track required?
+
+**No.** The chain works with just OSV-Scanner → DefectDojo for SCA.
+Tamp.DependencyTrack.V1 is opt-in: when the `TAMP_DT_*` env vars are
+unset, `SecurityPush` skips the DT leg cleanly and only pushes the
+OSV-Scanner CVE SARIF to DefectDojo.
+
+DT is the right choice when you need any of:
+- **Continuous monitoring** — alerts when a newly-published CVE matches
+  a package already in an uploaded SBOM (without re-running the chain).
+- **Portfolio-wide queries** — "which of our N projects use vulnerable
+  log4j 2.x?" answered in one call.
+- **Persistent VEX state** — mark a CVE not-exploitable once; survives
+  every re-upload of the SBOM, so noise stays suppressed across builds.
+- **Multi-source CVE reconciliation** — DT pulls NVD + GHSA + OSV + OSS
+  Index + (optional) VulnDB in one feed.
+- **Federal compliance evidence trail** — auditor-grade record of
+  what-was-known-when, paired with VEX justifications.
+
+For single-repo or laptop-scale evaluation, OSV-Scanner + DefectDojo
+covers ~80% of DT's value at zero operational cost. Stand up DT when
+the portfolio or compliance story is real.
+
 ## Why two SAST sources
 
 OpenGrep is a pattern-matcher. The C# ruleset on Semgrep Registry is
