@@ -46,7 +46,10 @@ class Build : TampBuild
     AbsolutePath CoverageDir => Artifacts / "coverage";
     AbsolutePath SecurityDir => Artifacts / "security";
     AbsolutePath SbomFile => SecurityDir / "tamp-bom.json";
-    AbsolutePath SarifFile => SecurityDir / "tamp-opengrep.sarif";
+    AbsolutePath SarifOpenGrepFile => SecurityDir / "tamp-opengrep.sarif";
+    AbsolutePath SarifRoslynDir => SecurityDir / "roslyn";
+    AbsolutePath SarifRoslynFile => SecurityDir / "tamp-roslyn.sarif";
+    AbsolutePath SarifSastFile => SecurityDir / "tamp-sast.sarif";
 
     // ----- Wave 1 security chain env-var inputs (TAM-243 / TAM-245). All
     //       OPTIONAL: when unset, the SecurityPush target no-ops cleanly so
@@ -217,7 +220,7 @@ class Build : TampBuild
             return CycloneDx.Generate(s => s
                 .SetPath(Solution.Path)
                 .SetOutputDirectory(SecurityDir)
-                .SetFilename(SbomFile.Value.Substring(SecurityDir.Value.Length + 1))
+                .SetFilename("tamp-bom.json")
                 .SetFormat(CycloneDxFormat.Json)
                 .SetRecursive(true)
                 .SetExcludeTestProjects(true)
@@ -225,8 +228,8 @@ class Build : TampBuild
                 .SetWorkingDirectory(RootDirectory));
         });
 
-    Target SecurityScan => _ => _
-        .Description("Run OpenGrep over the Tamp source tree with the registry auto rules. Output: artifacts/security/tamp-opengrep.sarif.")
+    Target SecurityScanOpenGrep => _ => _
+        .Description("Pattern-based SAST: OpenGrep over the Tamp source tree. Output: artifacts/security/tamp-opengrep.sarif.")
         .Executes(() =>
         {
             SecurityDir.CreateDirectory();
@@ -235,7 +238,7 @@ class Build : TampBuild
                 .AddTarget("tests")
                 .AddTarget("build")
                 .AddConfig("auto")
-                .SetOutputFile(SarifFile)
+                .SetOutputFile(SarifOpenGrepFile)
                 .AddExclude("**/bin/**")
                 .AddExclude("**/obj/**")
                 .AddExclude("artifacts/**")
@@ -243,8 +246,61 @@ class Build : TampBuild
                 .SetWorkingDirectory(RootDirectory));
         });
 
+    Target SecurityScanRoslyn => _ => _
+        .Description("Semantic SAST: SonarAnalyzer.CSharp + Roslynator + NetAnalyzers via /p:ErrorLog. Produces one SARIF per (project, TFM) pair under artifacts/security/roslyn/, then merges to tamp-roslyn.sarif. TreatWarningsAsErrors is overridden to false so findings flow to SARIF without breaking the build. Multi-TFM projects emit one SARIF per TFM; identical findings across TFMs dedup at the DefectDojo end.")
+        .DependsOn(nameof(Restore))
+        .Executes(() =>
+        {
+            SecurityDir.CreateDirectory();
+            SarifRoslynDir.CreateDirectory();
+            // Clear per-(project, TFM) SARIFs — ErrorLog opens for write but
+            // stale files from a prior wider build (e.g. before a project was
+            // removed) would otherwise linger and skew the merge.
+            foreach (var f in SarifRoslynDir.GlobFiles("*.sarif")) f.Delete();
+
+            return DotNet.Build(s => s
+                .SetProject(Solution.Path)
+                .SetConfiguration(Configuration)
+                .SetProperty("IncludeSecurityAnalyzers", "true")
+                .SetProperty("TreatWarningsAsErrors", "false")
+                .SetNoIncremental(true));
+        });
+
+    Target SecurityScan => _ => _
+        .Description("Combine SAST sources: OpenGrep SARIF + per-project Roslyn SARIFs → artifacts/security/tamp-sast.sarif. The merged log preserves a separate run per source so the tool-of-origin per finding stays identifiable downstream.")
+        .DependsOn(nameof(SecurityScanOpenGrep), nameof(SecurityScanRoslyn))
+        .Executes(() =>
+        {
+            var logs = new List<SarifLog>();
+
+            if (File.Exists(SarifOpenGrepFile))
+            {
+                logs.Add(SarifReader.LoadFromFile(SarifOpenGrepFile));
+            }
+
+            var roslynSarifs = SarifRoslynDir.GlobFiles("*.sarif").ToList();
+            foreach (var sarif in roslynSarifs)
+            {
+                logs.Add(SarifReader.LoadFromFile(sarif));
+            }
+
+            var merged = SarifMerge.Combine(logs);
+            // Also merge the per-project Roslyn SARIFs alone so adopters who
+            // only want the Roslyn slice can grab one file.
+            if (roslynSarifs.Count > 0)
+            {
+                var roslynOnly = SarifMerge.Combine(roslynSarifs.Select(f => SarifReader.LoadFromFile(f)));
+                SarifWriter.WriteToFile(roslynOnly, SarifRoslynFile);
+            }
+
+            SarifWriter.WriteToFile(merged, SarifSastFile);
+
+            var totalResults = merged.Runs.Sum(r => r.Results?.Count ?? 0);
+            Console.WriteLine($"[security] Merged {logs.Count} SARIF source(s) → {SarifSastFile.Value} ({merged.Runs.Count} runs, {totalResults} findings)");
+        });
+
     Target SecurityPush => _ => _
-        .Description("Push the SBOM to Dependency-Track and the SARIF + FPF to DefectDojo. Opt-in via TAMP_DT_URL / TAMP_DD_URL env vars; no-op when unset so producer-only builds stay green.")
+        .Description("Push the SBOM to Dependency-Track and the merged SAST SARIF + FPF to DefectDojo. Opt-in via TAMP_DT_URL / TAMP_DD_URL env vars; no-op when unset so producer-only builds stay green.")
         .DependsOn(nameof(Sbom), nameof(SecurityScan))
         .Executes(async () =>
         {
@@ -288,9 +344,9 @@ class Build : TampBuild
                 };
                 using var dd = new DefectDojoClient(ddSettings);
 
-                if (File.Exists(SarifFile))
+                if (File.Exists(SarifSastFile))
                 {
-                    var sarifLog = SarifReader.LoadFromFile(SarifFile);
+                    var sarifLog = SarifReader.LoadFromFile(SarifSastFile);
                     var sarifResult = await dd.ReimportSarifAsync(engagementId, sarifLog);
                     Console.WriteLine($"[security] DD SARIF reimport → test {sarifResult.TestId}");
                 }
@@ -308,7 +364,7 @@ class Build : TampBuild
         });
 
     Target Security => _ => _
-        .Description("End-to-end Wave 1 chain: Sbom + SecurityScan + (gated) SecurityPush. Run locally as `tamp security`.")
+        .Description("End-to-end Wave 1 chain: Sbom + SecurityScan (OpenGrep + Roslyn merge) + (gated) SecurityPush. Run locally as `tamp Security`.")
         .DependsOn(nameof(Sbom), nameof(SecurityScan), nameof(SecurityPush));
 
     Target Default => _ => _

@@ -37,4 +37,29 @@
     <Version>1.10.0</Version>
   </PropertyGroup>
 
+  <!--
+    TAM-248: opt-in Roslyn analyzer pack for the security chain.
+    Activated by `/p:IncludeSecurityAnalyzers=true` (set by the
+    SecurityScanRoslyn target in build/Build.cs). When unset, the default
+    Compile / Test / Pack flow runs without these analyzers and keeps the
+    existing TreatWarningsAsErrors green-build invariant.
+
+    Skipped for test projects on purpose — we want SARIF focused on
+    production code, not test scaffolding.
+
+    ErrorLog is set here (not via /p:ErrorLog=…) so MSBuild evaluates
+    $(MSBuildProjectName) per-project at load time. Passing /p:ErrorLog=
+    on the command line treats the value as a literal and every project
+    would clobber the same SARIF file.
+  -->
+  <ItemGroup Condition="'$(IncludeSecurityAnalyzers)' == 'true' AND '$(IsTestProject)' != 'true'">
+    <PackageReference Include="SonarAnalyzer.CSharp" PrivateAssets="all" IncludeAssets="analyzers;build" />
+    <PackageReference Include="Roslynator.Analyzers" PrivateAssets="all" IncludeAssets="analyzers;build" />
+  </ItemGroup>
+
+  <PropertyGroup Condition="'$(IncludeSecurityAnalyzers)' == 'true' AND '$(IsTestProject)' != 'true'">
+    <ErrorLog>$(MSBuildThisFileDirectory)artifacts/security/roslyn/$(MSBuildProjectName)-$(TargetFramework).sarif,version=2.1</ErrorLog>
+    <ReportAnalyzer>true</ReportAnalyzer>
+  </PropertyGroup>
+
 </Project>

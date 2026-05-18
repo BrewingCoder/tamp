@@ -17,7 +17,8 @@ satellites below. Tamp itself dogfoods the chain — see
 | [`Tamp.Sarif`](../src/Tamp.Sarif) | Contract package | Typed `SarifLog` record + `IFindingSource` interface (SARIF 2.1.0) |
 | [`Tamp.Sbom`](../src/Tamp.Sbom) | Contract package | Typed `CycloneDxBom` record + `ISbomSource`/`ISbomSink` (CycloneDX 1.6/1.7 with first-class VEX) |
 | [`Tamp.CycloneDx.V6`](../src/Tamp.CycloneDx.V6) | SBOM producer | CommandPlan wrapping `dotnet-CycloneDX 6.x`; emits a CycloneDX JSON BOM |
-| [`Tamp.OpenGrep.V1`](../src/Tamp.OpenGrep.V1) | SAST producer | CommandPlan wrapping `opengrep 1.x`; emits SARIF findings |
+| [`Tamp.OpenGrep.V1`](../src/Tamp.OpenGrep.V1) | SAST producer (pattern) | CommandPlan wrapping `opengrep 1.x`; emits SARIF findings |
+| Roslyn analyzers (built-in path) | SAST producer (semantic) | `SonarAnalyzer.CSharp` + `Roslynator.Analyzers` + `Microsoft.CodeAnalysis.NetAnalyzers` activated via `/p:IncludeSecurityAnalyzers=true`; per-(project, TFM) SARIF via MSBuild's `/p:ErrorLog`. No separate satellite — see TAM-248. |
 | [`Tamp.DependencyTrack.V1`](../src/Tamp.DependencyTrack.V1) | SBOM/CVE/VEX hub | REST client for OWASP Dependency-Track v4.x (upload BOM, wait for analysis, export FPF) |
 | [`Tamp.DefectDojo.V2`](../src/Tamp.DefectDojo.V2) | Findings sink | REST client for DefectDojo v2 (import / reimport SARIF or FPF) |
 
@@ -122,6 +123,22 @@ tamp Security
 When the DT or DD env vars aren't set, `SecurityPush` logs a clean skip
 and returns success — the producer half stays green even before the
 hubs are reachable.
+
+## Why two SAST sources
+
+OpenGrep is a pattern-matcher. The C# ruleset on Semgrep Registry is
+~30 rules vs. SonarQube's ~700 — structurally thin coverage for C#.
+The chain pairs it with Roslyn analyzers (SonarAnalyzer.CSharp +
+Roslynator + NetAnalyzers) emitted as SARIF via MSBuild's `/p:ErrorLog`.
+
+| Source | What it catches | What it misses |
+|---|---|---|
+| OpenGrep | Codified policies, hardcoded secrets, generic OWASP patterns, multi-language sweeps | Deep C# semantics — dataflow, taint, type-aware checks |
+| Roslyn analyzers (Sonar + Roslynator + NetAnalyzers) | Dataflow-aware C# issues (`S6966 await WriteLineAsync`, `CA1510 ArgumentNullException.ThrowIfNull`, `S127 stop-condition mutation`, ~1400 findings on a clean Tamp tree) | Cross-language patterns; codified non-C# policy rules |
+
+Both emit SARIF. `SecurityScan` merges them via
+`Tamp.Sarif.SarifMerge.Combine` — runs are preserved separately so the
+tool-of-origin per finding stays identifiable downstream.
 
 ## Locked decisions
 
