@@ -1,0 +1,20 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <TargetFrameworks>net8.0;net9.0;net10.0</TargetFrameworks>
+    <RootNamespace>Tamp.CycloneDx.V5</RootNamespace>
+    <AssemblyName>Tamp.CycloneDx.V5</AssemblyName>
+  </PropertyGroup>
+
+  <PropertyGroup Label="Package">
+    <PackageId>Tamp.CycloneDx.V5</PackageId>
+    <Description>Tamp CommandPlan wrapper for the `dotnet-CycloneDX` global tool (5.x) — generates CycloneDX SBOMs from .NET projects and solutions. Pinned to 5.x because the CLI flags have shifted across that major. Defaults to JSON output because the Wave 1 chain (Dependency-Track) consumes JSON.</Description>
+    <IsPackable>true</IsPackable>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\Tamp.Core\Tamp.Core.csproj" />
+    <PackageReference Include="Microsoft.SourceLink.GitHub" PrivateAssets="All" />
+  </ItemGroup>
+
+</Project>
