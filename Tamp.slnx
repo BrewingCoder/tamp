@@ -29,6 +29,7 @@
     <Project Path="src/Tamp.DependencyTrack.V1/Tamp.DependencyTrack.V1.csproj" />
     <Project Path="src/Tamp.DefectDojo.V2/Tamp.DefectDojo.V2.csproj" />
     <Project Path="src/Tamp.CycloneDx.V5/Tamp.CycloneDx.V5.csproj" />
+    <Project Path="src/Tamp.OpenGrep.V1/Tamp.OpenGrep.V1.csproj" />
   </Folder>
   <Folder Name="/build/">
     <Project Path="build/Build.csproj" />
@@ -46,5 +47,6 @@
     <Project Path="tests/Tamp.DependencyTrack.V1.Tests/Tamp.DependencyTrack.V1.Tests.csproj" />
     <Project Path="tests/Tamp.DefectDojo.V2.Tests/Tamp.DefectDojo.V2.Tests.csproj" />
     <Project Path="tests/Tamp.CycloneDx.V5.Tests/Tamp.CycloneDx.V5.Tests.csproj" />
+    <Project Path="tests/Tamp.OpenGrep.V1.Tests/Tamp.OpenGrep.V1.Tests.csproj" />
   </Folder>
 </Solution>
