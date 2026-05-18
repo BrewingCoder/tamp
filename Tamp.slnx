@@ -32,6 +32,7 @@
     <Project Path="src/Tamp.OpenGrep.V1/Tamp.OpenGrep.V1.csproj" />
     <Project Path="src/Tamp.OsvScanner.V2/Tamp.OsvScanner.V2.csproj" />
     <Project Path="src/Tamp.Trivy/Tamp.Trivy.csproj" />
+    <Project Path="src/Tamp.Syft.V1/Tamp.Syft.V1.csproj" />
   </Folder>
   <Folder Name="/build/">
     <Project Path="build/Build.csproj" />
@@ -52,5 +53,6 @@
     <Project Path="tests/Tamp.OpenGrep.V1.Tests/Tamp.OpenGrep.V1.Tests.csproj" />
     <Project Path="tests/Tamp.OsvScanner.V2.Tests/Tamp.OsvScanner.V2.Tests.csproj" />
     <Project Path="tests/Tamp.Trivy.Tests/Tamp.Trivy.Tests.csproj" />
+    <Project Path="tests/Tamp.Syft.V1.Tests/Tamp.Syft.V1.Tests.csproj" />
   </Folder>
 </Solution>
