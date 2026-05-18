@@ -28,6 +28,15 @@
     <ProjectReference Include="..\src\Tamp.NetCli.V10\Tamp.NetCli.V10.csproj" />
     <ProjectReference Include="..\src\Tamp.DotNetCoverage.V18\Tamp.DotNetCoverage.V18.csproj" />
 
+    <!-- Wave 1 security chain: dogfooded on every build that opts into
+         the Security target (TAM-245). -->
+    <ProjectReference Include="..\src\Tamp.Sarif\Tamp.Sarif.csproj" />
+    <ProjectReference Include="..\src\Tamp.Sbom\Tamp.Sbom.csproj" />
+    <ProjectReference Include="..\src\Tamp.CycloneDx.V6\Tamp.CycloneDx.V6.csproj" />
+    <ProjectReference Include="..\src\Tamp.OpenGrep.V1\Tamp.OpenGrep.V1.csproj" />
+    <ProjectReference Include="..\src\Tamp.DependencyTrack.V1\Tamp.DependencyTrack.V1.csproj" />
+    <ProjectReference Include="..\src\Tamp.DefectDojo.V2\Tamp.DefectDojo.V2.csproj" />
+
     <!--
       Cross-repo PackageReference: Tamp.SonarScanner.V10 ships from
       tamp-build/tamp-sonar. Pinned to 0.1.0, the first non-placeholder

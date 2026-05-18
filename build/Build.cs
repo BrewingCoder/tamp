@@ -2,6 +2,12 @@ using Tamp;
 using Tamp.DotNetCoverage.V18;
 using Tamp.NetCli.V10;
 using Tamp.SonarScanner.V10;
+using Tamp.CycloneDx.V6;
+using Tamp.OpenGrep.V1;
+using Tamp.Sbom;
+using Tamp.Sarif;
+using Tamp.DependencyTrack.V1;
+using Tamp.DefectDojo.V2;
 
 /// <summary>
 /// Tamp's self-hosted build script — Tamp drives its own pipeline.
@@ -38,6 +44,33 @@ class Build : TampBuild
 
     AbsolutePath Artifacts => RootDirectory / "artifacts";
     AbsolutePath CoverageDir => Artifacts / "coverage";
+    AbsolutePath SecurityDir => Artifacts / "security";
+    AbsolutePath SbomFile => SecurityDir / "tamp-bom.json";
+    AbsolutePath SarifFile => SecurityDir / "tamp-opengrep.sarif";
+
+    // ----- Wave 1 security chain env-var inputs (TAM-243 / TAM-245). All
+    //       OPTIONAL: when unset, the SecurityPush target no-ops cleanly so
+    //       the producer half still dogfoods on every CI run regardless of
+    //       whether DT / DD instances exist yet.
+
+    // Initialiser =null silences CS0649 (the framework assigns these by reflection).
+    [Parameter("Dependency-Track base URL.", EnvironmentVariable = "TAMP_DT_URL")]
+    readonly string? DtUrl = null;
+
+    [Secret("Dependency-Track API key.", EnvironmentVariable = "TAMP_DT_API_KEY")]
+    readonly Secret? DtApiKey = null;
+
+    [Parameter("Dependency-Track project UUID for this build.", EnvironmentVariable = "TAMP_DT_PROJECT_UUID")]
+    readonly string? DtProjectUuid = null;
+
+    [Parameter("DefectDojo base URL.", EnvironmentVariable = "TAMP_DD_URL")]
+    readonly string? DdUrl = null;
+
+    [Secret("DefectDojo API v2 token.", EnvironmentVariable = "TAMP_DD_TOKEN")]
+    readonly Secret? DdToken = null;
+
+    [Parameter("DefectDojo engagement id for this build.", EnvironmentVariable = "TAMP_DD_ENGAGEMENT_ID")]
+    readonly int? DdEngagementId = null;
 
     Target Info => _ => _
         .Description("Print build context (branch, commit, configuration) — useful at the top of CI logs.")
@@ -166,6 +199,117 @@ class Build : TampBuild
     Target Sonar => _ => _
         .DependsOn(nameof(SonarBegin), nameof(SonarEnd))
         .Description("End-to-end Sonar scan: Begin (before Compile) → Compile → Test → End. Requires SONAR_TOKEN.");
+
+    // ----- Wave 1 security chain (TAM-245 dogfood). -----
+    //
+    // Producer targets (Sbom, SecurityScan) are always runnable and emit
+    // artifacts to ./artifacts/security/. SecurityPush is opt-in: it
+    // no-ops unless TAMP_DT_URL / TAMP_DD_URL are set, so the producer
+    // half exercises on every CI run even before DT/DD instances exist
+    // in the lab.
+
+    Target Sbom => _ => _
+        .Description("Generate a CycloneDX SBOM for the Tamp solution via dotnet-CycloneDX 6.x. Output: artifacts/security/tamp-bom.json.")
+        .DependsOn(nameof(Restore))
+        .Executes(() =>
+        {
+            SecurityDir.CreateDirectory();
+            return CycloneDx.Generate(s => s
+                .SetPath(Solution.Path)
+                .SetOutputDirectory(SecurityDir)
+                .SetFilename(SbomFile.Value.Substring(SecurityDir.Value.Length + 1))
+                .SetFormat(CycloneDxFormat.Json)
+                .SetRecursive(true)
+                .SetExcludeTestProjects(true)
+                .SetMetadataComponentName("Tamp")
+                .SetWorkingDirectory(RootDirectory));
+        });
+
+    Target SecurityScan => _ => _
+        .Description("Run OpenGrep over the Tamp source tree with the registry auto rules. Output: artifacts/security/tamp-opengrep.sarif.")
+        .Executes(() =>
+        {
+            SecurityDir.CreateDirectory();
+            return OpenGrep.Scan(s => s
+                .AddTarget("src")
+                .AddTarget("tests")
+                .AddTarget("build")
+                .AddConfig("auto")
+                .SetOutputFile(SarifFile)
+                .AddExclude("**/bin/**")
+                .AddExclude("**/obj/**")
+                .AddExclude("artifacts/**")
+                .SetQuiet(true)
+                .SetWorkingDirectory(RootDirectory));
+        });
+
+    Target SecurityPush => _ => _
+        .Description("Push the SBOM to Dependency-Track and the SARIF + FPF to DefectDojo. Opt-in via TAMP_DT_URL / TAMP_DD_URL env vars; no-op when unset so producer-only builds stay green.")
+        .DependsOn(nameof(Sbom), nameof(SecurityScan))
+        .Executes(async () =>
+        {
+            string? exportedFpf = null;
+
+            if (!string.IsNullOrEmpty(DtUrl) && DtApiKey is not null && !string.IsNullOrEmpty(DtProjectUuid))
+            {
+                Console.WriteLine($"[security] Uploading SBOM to Dependency-Track at {DtUrl} (project {DtProjectUuid})…");
+                var dtSettings = new DependencyTrackSettings
+                {
+                    BaseUrl = new Uri(DtUrl),
+                    ApiKey = DtApiKey,
+                };
+                using var dt = new DependencyTrackClient(dtSettings);
+                var bom = SbomReader.LoadFromFile(SbomFile);
+                var upload = await dt.UploadBomAsync(Guid.Parse(DtProjectUuid), bom);
+                Console.WriteLine($"[security] DT upload token: {upload.Token}; waiting for async analysis…");
+                var settled = await dt.WaitForAnalysisCompleteAsync(upload.Token, dtSettings.DefaultAnalysisTimeout, Backoff.Constant(TimeSpan.FromSeconds(3)));
+                if (!settled)
+                {
+                    Console.WriteLine("[security] DT analysis didn't settle within budget; skipping findings export.");
+                }
+                else
+                {
+                    exportedFpf = await dt.ExportFindingsAsync(Guid.Parse(DtProjectUuid));
+                    Console.WriteLine($"[security] DT findings exported ({exportedFpf.Length} bytes of FPF JSON).");
+                }
+            }
+            else
+            {
+                Console.WriteLine("[security] TAMP_DT_URL / TAMP_DT_API_KEY / TAMP_DT_PROJECT_UUID not all set — skipping Dependency-Track push.");
+            }
+
+            if (!string.IsNullOrEmpty(DdUrl) && DdToken is not null && DdEngagementId is { } engagementId)
+            {
+                Console.WriteLine($"[security] Pushing findings to DefectDojo at {DdUrl} (engagement {engagementId})…");
+                var ddSettings = new DefectDojoSettings
+                {
+                    BaseUrl = new Uri(DdUrl),
+                    Token = DdToken,
+                };
+                using var dd = new DefectDojoClient(ddSettings);
+
+                if (File.Exists(SarifFile))
+                {
+                    var sarifLog = SarifReader.LoadFromFile(SarifFile);
+                    var sarifResult = await dd.ReimportSarifAsync(engagementId, sarifLog);
+                    Console.WriteLine($"[security] DD SARIF reimport → test {sarifResult.TestId}");
+                }
+
+                if (exportedFpf is not null)
+                {
+                    var fpfResult = await dd.ReimportScanAsync(DefectDojoScanType.DependencyTrackFpf, engagementId, exportedFpf);
+                    Console.WriteLine($"[security] DD FPF reimport → test {fpfResult.TestId}");
+                }
+            }
+            else
+            {
+                Console.WriteLine("[security] TAMP_DD_URL / TAMP_DD_TOKEN / TAMP_DD_ENGAGEMENT_ID not all set — skipping DefectDojo push.");
+            }
+        });
+
+    Target Security => _ => _
+        .Description("End-to-end Wave 1 chain: Sbom + SecurityScan + (gated) SecurityPush. Run locally as `tamp security`.")
+        .DependsOn(nameof(Sbom), nameof(SecurityScan), nameof(SecurityPush));
 
     Target Default => _ => _
         .DependsOn(nameof(Compile))
