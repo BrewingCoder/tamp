@@ -2,7 +2,7 @@
 
   <PropertyGroup>
     <TargetFrameworks>net8.0;net9.0;net10.0</TargetFrameworks>
-    <RootNamespace>Tamp.CycloneDx.V5.Tests</RootNamespace>
+    <RootNamespace>Tamp.CycloneDx.V6.Tests</RootNamespace>
     <IsPackable>false</IsPackable>
     <IsTestProject>true</IsTestProject>
   </PropertyGroup>
@@ -16,7 +16,7 @@
   </ItemGroup>
 
   <ItemGroup>
-    <ProjectReference Include="..\..\src\Tamp.CycloneDx.V5\Tamp.CycloneDx.V5.csproj" />
+    <ProjectReference Include="..\..\src\Tamp.CycloneDx.V6\Tamp.CycloneDx.V6.csproj" />
   </ItemGroup>
 
 </Project>

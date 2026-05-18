@@ -1,14 +1,11 @@
-namespace Tamp.CycloneDx.V5;
+namespace Tamp.CycloneDx.V6;
 
 /// <summary>
-/// Tamp wrapper for the <c>dotnet-CycloneDX</c> global tool. Build a
-/// <see cref="CommandPlan"/> the runner dispatches.
+/// Tamp wrapper for the <c>dotnet-CycloneDX</c> global tool (6.x). Build
+/// a <see cref="CommandPlan"/> the runner dispatches.
 /// </summary>
 /// <remarks>
-/// Pre-requisite: adopters must install the tool with
-/// <c>dotnet tool install --global CycloneDX</c>. Wave 1 keeps the tool
-/// install as an adopter responsibility; a Tamp-managed-tool flow may
-/// land in a follow-up.
+/// Adopter installs with <c>dotnet tool install --global CycloneDX</c>.
 /// </remarks>
 public static class CycloneDx
 {
