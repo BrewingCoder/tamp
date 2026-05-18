@@ -26,6 +26,7 @@
     <Project Path="src/Tamp.Analyzers/Tamp.Analyzers.csproj" />
     <Project Path="src/Tamp.Sarif/Tamp.Sarif.csproj" />
     <Project Path="src/Tamp.Sbom/Tamp.Sbom.csproj" />
+    <Project Path="src/Tamp.DependencyTrack.V1/Tamp.DependencyTrack.V1.csproj" />
   </Folder>
   <Folder Name="/build/">
     <Project Path="build/Build.csproj" />
@@ -40,5 +41,6 @@
     <Project Path="tests/Tamp.Analyzers.Tests/Tamp.Analyzers.Tests.csproj" />
     <Project Path="tests/Tamp.Sarif.Tests/Tamp.Sarif.Tests.csproj" />
     <Project Path="tests/Tamp.Sbom.Tests/Tamp.Sbom.Tests.csproj" />
+    <Project Path="tests/Tamp.DependencyTrack.V1.Tests/Tamp.DependencyTrack.V1.Tests.csproj" />
   </Folder>
 </Solution>
