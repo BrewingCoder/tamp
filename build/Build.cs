@@ -267,7 +267,7 @@ class Build : TampBuild
         });
 
     Target SecurityScan => _ => _
-        .Description("Combine SAST sources: OpenGrep SARIF + per-project Roslyn SARIFs → artifacts/security/tamp-sast.sarif. The merged log preserves a separate run per source so the tool-of-origin per finding stays identifiable downstream.")
+        .Description("Combine SAST sources: OpenGrep SARIF + per-project Roslyn SARIFs → artifacts/security/tamp-sast.sarif. Uses SarifMerge.CombineDistinct to collapse the per-TFM duplication a multi-target Roslyn build emits — same source-line finding appears once per TFM otherwise. Runs are preserved so the tool-of-origin per finding stays identifiable downstream.")
         .DependsOn(nameof(SecurityScanOpenGrep), nameof(SecurityScanRoslyn))
         .Executes(() =>
         {
@@ -284,19 +284,19 @@ class Build : TampBuild
                 logs.Add(SarifReader.LoadFromFile(sarif));
             }
 
-            var merged = SarifMerge.Combine(logs);
+            var merged = SarifMerge.CombineDistinct(logs);
             // Also merge the per-project Roslyn SARIFs alone so adopters who
             // only want the Roslyn slice can grab one file.
             if (roslynSarifs.Count > 0)
             {
-                var roslynOnly = SarifMerge.Combine(roslynSarifs.Select(f => SarifReader.LoadFromFile(f)));
+                var roslynOnly = SarifMerge.CombineDistinct(roslynSarifs.Select(f => SarifReader.LoadFromFile(f)));
                 SarifWriter.WriteToFile(roslynOnly, SarifRoslynFile);
             }
 
             SarifWriter.WriteToFile(merged, SarifSastFile);
 
             var totalResults = merged.Runs.Sum(r => r.Results?.Count ?? 0);
-            Console.WriteLine($"[security] Merged {logs.Count} SARIF source(s) → {SarifSastFile.Value} ({merged.Runs.Count} runs, {totalResults} findings)");
+            Console.WriteLine($"[security] Merged {logs.Count} SARIF source(s) → {SarifSastFile.Value} ({merged.Runs.Count} runs, {totalResults} distinct findings)");
         });
 
     Target SecurityPush => _ => _

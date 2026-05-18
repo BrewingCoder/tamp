@@ -38,4 +38,15 @@ public static class SarifMerge
             Runs = runs,
         };
     }
+
+    /// <summary>
+    /// Combine the inputs (see <see cref="Combine"/>) and then collapse
+    /// duplicate results via <see cref="SarifDedup.Distinct"/>. The
+    /// common path when stitching together SARIF from sources that
+    /// re-analyse the same source per TFM (Roslyn) or scan overlapping
+    /// directories (multi-tool pipelines).
+    /// </summary>
+    /// <exception cref="ArgumentNullException">The input sequence is null.</exception>
+    public static SarifLog CombineDistinct(IEnumerable<SarifLog> logs)
+        => SarifDedup.Distinct(Combine(logs));
 }
