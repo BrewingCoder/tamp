@@ -8,6 +8,32 @@ Pre-1.0 versions may break public API freely between minor versions; the `0.x` l
 
 ## [Unreleased]
 
+## [1.11.1] — 2026-05-18 — Naming reconcile: drop duplicate `Tamp.Syft.V1`, rename `Tamp.OpenGrep.V1` → `Tamp.OpenGrep`
+
+A cross-org review after 1.11.0 surfaced that two of the eleven new packages collided with the established satellite conventions:
+
+### Removed
+
+- **`Tamp.Syft.V1`** — duplicate of `Tamp.Syft` already shipping from the `tamp-build/tamp-syft` satellite repo at `0.1.0`. The satellite implementation is strictly better-designed (Tool-resolution via `[FromPath]`, five verbs — Scan/Convert/Attest/Version/CatalogerList — vs. one, object-init + fluent settings styles, 401-line test surface). `Tamp.Syft.V1 1.11.0` stays resolvable on nuget.org but should be deprecated with a pointer to `Tamp.Syft`.
+
+### Changed
+
+- **`Tamp.OpenGrep.V1` → `Tamp.OpenGrep`** — renamed to drop the `.V1` suffix per ADR 0002. OpenGrep was forked at 1.x with no prior 0.x line to break compatibility against, so the pin was over-cautious. Matches the org convention of unpinned names for tools where the major-line is expected to stay stable (cf. Tamp.Trivy, Tamp.Syft, Tamp.Grype, Tamp.Cargo, Tamp.Yarn). `Tamp.OpenGrep.V1 1.11.0` stays resolvable on nuget.org; adopters should switch to `Tamp.OpenGrep 1.11.1` and the V1 package should be deprecated.
+
+### Notes — adopter migration
+
+```diff
+- <PackageReference Include="Tamp.OpenGrep.V1" Version="1.11.0" />
++ <PackageReference Include="Tamp.OpenGrep" Version="1.11.1" />
+
+- using Tamp.OpenGrep.V1;
++ using Tamp.OpenGrep;
+```
+
+`Tamp.Security.Pipeline 1.11.1` already pulls the renamed `Tamp.OpenGrep`, so adopters who consume only the meta-package get the rename transparently when they update.
+
+The remaining six wrapper-package migrations to their own satellite repos (TAM-256..261 — `Tamp.Trivy` → tamp-trivy, etc.) are tracked separately under TAM-254 and will land in subsequent releases.
+
 ## [1.11.0] — 2026-05-18 — Wave 1+2+3 security & compliance chain (TAM-234 / TAM-235 / TAM-236)
 
 End-to-end SBOM → SAST → SCA → secrets/misconfig → DT/DD push chain across eleven new satellites + one one-import meta-package. Validated live against local Dependency-Track 4.14.2 + DefectDojo docker-compose stacks producing four distinct DefectDojo tests (SAST 505 findings + 3× SCA/secrets 0 findings on the Tamp tree) in ~40 s end-to-end. See [`docs/security-chain.md`](docs/security-chain.md) for the adopter recipe.

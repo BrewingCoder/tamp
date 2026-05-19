@@ -1,4 +1,4 @@
-namespace Tamp.OpenGrep.V1;
+namespace Tamp.OpenGrep;
 
 /// <summary>
 /// Tamp wrapper for the <c>opengrep</c> CLI — the multi-vendor-governed

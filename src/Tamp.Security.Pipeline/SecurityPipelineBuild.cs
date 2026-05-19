@@ -2,17 +2,18 @@ using Tamp.CycloneDx.V6;
 using Tamp.DefectDojo.V2;
 using Tamp.DependencyTrack.V1;
 using Tamp.NetCli.V10;
-using Tamp.OpenGrep.V1;
+using Tamp.OpenGrep;
 using Tamp.OsvScanner.V2;
 using Tamp.Sarif;
 using Tamp.Sbom;
 using Tamp.Trivy;
 // Class aliases — needed because we live in namespace Tamp.Security.Pipeline,
 // which causes C# name lookup to resolve `CycloneDx`/`OpenGrep`/`OsvScanner`/`Trivy`
-// to the namespace `Tamp.CycloneDx`/etc. (where the .V{N} subnamespace lives)
-// before reaching the imported wrapper class of the same name.
+// to the namespace `Tamp.CycloneDx`/etc. before reaching the imported wrapper
+// class of the same name. Unpinned satellites (OpenGrep, Trivy) and pinned
+// (CycloneDx.V6, OsvScanner.V2) both need the alias for the same reason.
 using CycloneDxCli = Tamp.CycloneDx.V6.CycloneDx;
-using OpenGrepCli = Tamp.OpenGrep.V1.OpenGrep;
+using OpenGrepCli = Tamp.OpenGrep.OpenGrep;
 using OsvScannerCli = Tamp.OsvScanner.V2.OsvScanner;
 using TrivyCli = Tamp.Trivy.Trivy;
 

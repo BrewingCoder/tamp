@@ -1,4 +1,4 @@
-namespace Tamp.OpenGrep.V1;
+namespace Tamp.OpenGrep;
 
 /// <summary>
 /// Settings for <see cref="OpenGrep.Scan"/>. Wave 1 default: emit SARIF

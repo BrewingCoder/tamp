@@ -2,7 +2,7 @@
 
   <PropertyGroup>
     <TargetFrameworks>net8.0;net9.0;net10.0</TargetFrameworks>
-    <RootNamespace>Tamp.OpenGrep.V1.Tests</RootNamespace>
+    <RootNamespace>Tamp.OpenGrep.Tests</RootNamespace>
     <IsPackable>false</IsPackable>
     <IsTestProject>true</IsTestProject>
   </PropertyGroup>
@@ -16,7 +16,7 @@
   </ItemGroup>
 
   <ItemGroup>
-    <ProjectReference Include="..\..\src\Tamp.OpenGrep.V1\Tamp.OpenGrep.V1.csproj" />
+    <ProjectReference Include="..\..\src\Tamp.OpenGrep\Tamp.OpenGrep.csproj" />
   </ItemGroup>
 
 </Project>

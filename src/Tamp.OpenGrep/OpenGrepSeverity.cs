@@ -1,4 +1,4 @@
-namespace Tamp.OpenGrep.V1;
+namespace Tamp.OpenGrep;
 
 /// <summary>
 /// Severity threshold filter for the <c>opengrep scan --severity</c> flag.

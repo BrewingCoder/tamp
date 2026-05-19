@@ -1,6 +1,6 @@
 using Xunit;
 
-namespace Tamp.OpenGrep.V1.Tests;
+namespace Tamp.OpenGrep.Tests;
 
 public class OpenGrepScanTests
 {

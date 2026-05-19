@@ -33,7 +33,7 @@
     <ProjectReference Include="..\src\Tamp.Sarif\Tamp.Sarif.csproj" />
     <ProjectReference Include="..\src\Tamp.Sbom\Tamp.Sbom.csproj" />
     <ProjectReference Include="..\src\Tamp.CycloneDx.V6\Tamp.CycloneDx.V6.csproj" />
-    <ProjectReference Include="..\src\Tamp.OpenGrep.V1\Tamp.OpenGrep.V1.csproj" />
+    <ProjectReference Include="..\src\Tamp.OpenGrep\Tamp.OpenGrep.csproj" />
     <ProjectReference Include="..\src\Tamp.DependencyTrack.V1\Tamp.DependencyTrack.V1.csproj" />
     <ProjectReference Include="..\src\Tamp.DefectDojo.V2\Tamp.DefectDojo.V2.csproj" />
     <ProjectReference Include="..\src\Tamp.OsvScanner.V2\Tamp.OsvScanner.V2.csproj" />
